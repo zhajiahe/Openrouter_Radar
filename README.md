@@ -4,9 +4,9 @@
 
 **网站：** [访问在线网站](https://openrouter-radar.zhajiahe1994.workers.dev) · [健康状态](https://openrouter-radar.zhajiahe1994.workers.dev/api/health) · [源代码](https://github.com/zhajiahe/Openrouter_Radar)
 
-[UI 设计规范](docs/ui-design.md) · [贡献指南](CONTRIBUTING.md) · [English](#english) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
+[UI 设计规范](docs/ui-design.md) · [产品 / UX 审计](docs/product-ux-audit.md) · [贡献指南](CONTRIBUTING.md) · [English](#english) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
 
-**后端：Hono + TypeScript + Cloudflare Workers + D1 + Durable Objects。前端：React + Vite。**
+**后端：Hono + TypeScript + Cloudflare Workers + D1 + Durable Objects。前端：React + Vite。** UI 采用 OpenRouter 式紧凑模型目录与筛选信息架构，但保留独立品牌和原创样式。
 
 **部署者须通过 Cloudflare Secret 配置自己的 OpenRouter API Key；访客及注册用户都不必提供。** 不做代理、调用计费或账单分析。Radar 采集官方 API 元数据，帮助用户关注模型与 Provider，订阅涨价、降价和端点变化。
 

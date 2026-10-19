@@ -8,10 +8,10 @@ All endpoints are mounted on one Hono Worker. Body parameters are JSON. Session 
 |---|---|---|
 | GET | `/api/health` | Catalogue and global Provider sweep status; returns 503 until initial sync or during degraded state |
 | GET | `/api/stats` | Public model/provider/subscription/event counts |
-| GET | `/api/models?q=...&page=1&limit=30` | Model search (limit max 100) |
+| GET | `/api/models?q=...&page=1&limit=30` | Model search and pagination (limit max 100, sort=name|newest|context|price, provider=exact provider). Response adds total, lowest_input (USD/token), provider_count |
 | GET | `/api/model?id=author/model` | Model details & endpoint snapshots |
 | GET | `/api/providers` | Seen providers (all-model global scan, independent of subscriptions) |
-| GET | `/api/events?model_id=...` | Recent immutable events |
+| GET | `/api/events?model_id=...` | Paginated immutable events (model_id, q, kind, page, limit). Response adds total |
 | GET | `/feed.xml` | RSS |
 | POST | `/api/auth/register` | Registration; send verification email |
 | GET | `/api/auth/verify?token=...` | Verify email and redirect home |
@@ -68,3 +68,9 @@ The event store reuses the existing `price_events` table for compatibility. When
 ## Hourly global collection
 
 The Durable Object alarm wakes each minute. The full model catalogue refreshes once an hour, and **every** discovered model has a `collection_jobs` row. Providers are checked once their prior attempt is at least one hour old, in batches of 15 models per alarm by default (1–25 configurable by `MAX_MODELS_PER_TICK`). Subscriptions only match recorded changes and queue notifications; they never influence which models are collected. `/api/health` reports `provider_total`, `provider_scanned`, `provider_due`, `provider_errors` and interval fields. Hourly is a best-effort target, subject to model count, latency and quotas.
+
+## Model discovery and change feed
+
+- GET /api/models accepts q, provider (exact provider name), sort (name, newest, context, price), page (1-based), limit (1–100). The response includes total and each model's active Provider count plus lowest observed **base** input token price (USD/token). The price sort uses this normalized displayed price; it does not imply comparability of other billing dimensions or dynamic overrides.
+- GET /api/events accepts model_id, q (substring of model ID or Provider), kind (exact change code), page, limit (1–100), and returns total. Events are ordered newest-first. Use page links to avoid truncating the public history at 40–50 entries.
+- These APIs show recorded data, not confirmed minute-by-minute live quotes. The catalogue and Provider sweeps are best-effort hourly jobs.
