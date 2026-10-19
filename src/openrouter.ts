@@ -16,7 +16,7 @@ export type UpstreamModel=z.infer<typeof modelSchema>;
 export type UpstreamEndpoint=z.infer<typeof endpointSchema>;
 const ORIGIN='https://openrouter.ai';
 async function request(url:string):Promise<unknown>{
- const response=await fetch(url,{headers:{'Accept':'application/json','User-Agent':'OpenRouterRadar/0.1 (+https://github.com/zhajiahe/Openrouter_Radar)'},redirect:'error',signal:AbortSignal.timeout(12_000)});
+ const response=await fetch(url,{headers:{'Accept':'application/json','User-Agent':'OpenRouterRadar/0.1 (+https://github.com/zhajiahe/Openrouter_Radar)'},redirect:'manual',signal:AbortSignal.timeout(12_000)});
  if (!response.ok) { const error=new Error('OpenRouter HTTP '+response.status); (error as Error&{status?:number}).status=response.status; throw error; }
  return response.json();
 }
