@@ -22,3 +22,9 @@ test('UI stylesheet imports the shared semantic design tokens', () => {
   assert.ok(css.includes(':focus-visible'), 'Keyboard focus indicator required');
   assert.ok(css.includes('prefers-reduced-motion'), 'Reduced motion required');
 });
+
+test('GitHub deployment remains explicitly opt-in when Cloudflare Builds owns production', () => {
+  const workflow = read('.github/workflows/deploy.yml');
+  assert.ok(workflow.includes("vars.DEPLOY_VIA_GITHUB_ACTIONS == 'true'"));
+  assert.ok(workflow.includes("github.event_name == 'workflow_dispatch'"));
+});
