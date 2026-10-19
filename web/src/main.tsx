@@ -126,8 +126,8 @@ function App(){
   <aside className="sidebar">
    <div className="brand"><span className="brand-icon">◎</span><span>OR <b>Radar</b></span></div>
    <div className="side-caption">MARKET INTELLIGENCE</div>
-   <nav>{[['overview','◫','市场总览'],['catalog','▦','模型目录'],['events','↗','价格动态'],['watches','◉','我的订阅'],['notices','♧','通知中心']] .map(([id,ico,name])=>
-    <button key={id} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setSelected(null);setError('');}}>
+   <nav aria-label="主要导航">{[['overview','◫','市场总览'],['catalog','▦','模型目录'],['events','↗','价格动态'],['watches','◉','我的订阅'],['notices','♧','通知中心']] .map(([id,ico,name])=>
+    <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setSelected(null);setError('');}}>
      <span className="nav-icon">{ico}</span>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
     </button>)}</nav>
    <div className="side-footer"><span className="online-dot"/> Powered by Cloudflare Workers <a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">GitHub ↗</a></div>
@@ -137,8 +137,8 @@ function App(){
     <button className="account-button" onClick={()=>setView('account')}>{user?user.email:'注册 / 登录'}</button>
    </header>
    <div className="content">
-    {error&&<div className="toast error">{error}<button onClick={()=>setError('')}>×</button></div>}
-    {message&&<div className="toast success">{message}<button onClick={()=>setMessage('')}>×</button></div>}
+    {error&&<div className="toast error" role="alert">{error}<button type="button" aria-label="关闭错误提示" onClick={()=>setError('')}>×</button></div>}
+    {message&&<div className="toast success" role="status">{message}<button type="button" aria-label="关闭成功提示" onClick={()=>setMessage('')}>×</button></div>}
     {view==='overview'&&<>
      <div className="hero"><div className="eyebrow">YOUR MODEL MARKET WATCHTOWER</div><h1>洞察每一次模型价格变化<span className="accent">.</span></h1><p>追踪 OpenRouter 模型与 Provider 端点价格，订阅变化，收到邮件和站内通知。无需用户 API Key。</p><button className="primary" onClick={()=>setView('catalog')}>开始监控 <span>→</span></button></div>
      <div className="metrics">
@@ -147,11 +147,11 @@ function App(){
      </div>
      <div className="section-head"><h2>最近价格动态</h2><button className="text-action" onClick={()=>setView('events')}>查看全部 →</button></div>
      <EventsTable data={events.slice(0,8)}/>
-     <div className="hint">数据状态：<span className={status.status==='ok'?'good':'warning'}>{status.status==='ok'?'运行正常':'等待首次同步 / 数据过期'}</span> · 最近目录同步 {status.catalog_last_success?time(status.catalog_last_success):'尚未执行'}</div>
+     <div className="hint" role="status">数据状态：<span className={status.status==='ok'?'good':'warning'}>{status.status==='ok'?'运行正常':'等待首次同步 / 数据过期'}</span> · 最近目录同步 {status.catalog_last_success?time(status.catalog_last_success):'尚未执行'}</div>
     </>}
     {view==='catalog'&&<>
      <div className="page-heading"><div><div className="eyebrow">MODEL CATALOG</div><h1>模型目录</h1><p>选择模型，查看不同 Provider 的当前报价，并创建通知订阅。</p></div></div>
-     <div className="search-row"><input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索模型名称或 ID，例如 deepseek..." /><button onClick={()=>{void loadModels(search,page);}}>搜索</button></div>
+     <div className="search-row"><input aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索模型名称或 ID，例如 deepseek..." /><button onClick={()=>{void loadModels(search,page);}}>搜索</button></div>
      <div className="catalog-grid">
       <div className="panel models-panel">
        <div className="panel-title">模型 <span className="muted">({models.length} / 页)</span></div>
@@ -208,7 +208,7 @@ function App(){
   </main>
  </div>;
 }
-function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>免费公开注册。我们不会要求你的 OpenRouter API Key。</p><button className="primary" onClick={onLogin}>注册 / 登录 →</button></div>}
+function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><button className="primary" onClick={onLogin}>注册 / 登录 →</button></div>}
 function EventsTable({data}:{data:Event[]}){
  return <div className="panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
  {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td><span>{formatEvent(e)}</span></td><td><small>{time(e.created_at)}</small></td></tr>)}

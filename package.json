@@ -8,9 +8,12 @@
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run lint && npm run typecheck && npm test && npm run format:check && npm run build",
     "db:local": "wrangler d1 migrations apply DB --local",
-    "db:remote": "wrangler d1 migrations apply DB --remote"
+    "db:remote": "wrangler d1 migrations apply DB --remote",
+    "lint": "eslint src tests web/src web/vite.config.ts",
+    "format": "prettier --write src tests web/src web/vite.config.ts README.md CONTRIBUTING.md docs .github package.json eslint.config.mjs",
+    "format:check": "prettier --check eslint.config.mjs .prettierrc.json web/src/tokens.css docs/ui-design.md CONTRIBUTING.md .github/pull_request_template.md"
   },
   "dependencies": {
     "hono": "^4.9.0",
@@ -27,6 +30,10 @@
     "typescript": "^5.9.0",
     "tsx": "^4.20.0",
     "vite": "^7.1.0",
-    "wrangler": "^4.45.0"
+    "wrangler": "^4.45.0",
+    "eslint": "^9.39.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "typescript-eslint": "^8.46.0",
+    "prettier": "^3.6.2"
   }
 }
