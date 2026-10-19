@@ -42,15 +42,29 @@ app.get('/api/stats',async c=>{
  return c.json({models:models?.n||0,providers:providers?.n||0,subscriptions:subscriptions?.n||0,events24h:events?.n||0});
 });
 app.get('/api/models',async c=>{
- const query=(c.req.query('q')||'').trim().slice(0,80);
+ const q=(c.req.query('q')||'').trim().slice(0,80);
+ const provider=(c.req.query('provider')||'').trim().slice(0,150);
+ const sort=(c.req.query('sort')||'name').trim();
  const limit=Math.min(Math.max(Number(c.req.query('limit'))||30,1),100);
  const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
- const sql=`SELECT id,name,context_length,updated_at FROM models
- WHERE (?='' OR name LIKE ? ESCAPE '\\' OR id LIKE ? ESCAPE '\\')
- ORDER BY name LIMIT ? OFFSET ?`;
- const like='%'+query.replace(/[\\%_]/g,'\\$&')+'%';
- const rows=await c.env.DB.prepare(sql).bind(query,like,like,limit,(page-1)*limit).all();
- return c.json({data:rows.results,page,limit});
+ const order:Record<string,string>={
+  name:'m.name COLLATE NOCASE ASC, m.id ASC',
+  newest:'m.updated_at DESC, m.name ASC',
+  context:'m.context_length DESC, m.name ASC',
+  price:'CASE WHEN lowest_input IS NULL THEN 1 ELSE 0 END, lowest_input ASC, m.name ASC'
+ };
+ const where=`(?='' OR instr(lower(m.name),lower(?))>0 OR instr(lower(m.id),lower(?))>0)
+ AND (?='' OR EXISTS(SELECT 1 FROM endpoints ep WHERE ep.model_id=m.id AND ep.provider=? AND ep.status='active' AND ep.source='provider'))`;
+ const binds=[q,q,q,provider,provider] as const;
+ const [rows,count]=await Promise.all([
+  c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,
+   (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL) AS lowest_input,
+   (SELECT COUNT(DISTINCT e.provider) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active') AS provider_count
+   FROM models m WHERE ${where} ORDER BY ${order[sort]||order.name} LIMIT ? OFFSET ?`)
+    .bind(...binds,limit,(page-1)*limit).all(),
+  c.env.DB.prepare(`SELECT COUNT(*) AS total FROM models m WHERE ${where}`).bind(...binds).first<{total:number}>()
+ ]);
+ return c.json({data:rows.results,page,limit,total:count?.total||0});
 });
 app.get('/api/providers',async c=>{
  const rows=await c.env.DB.prepare(`SELECT provider,count(DISTINCT model_id) AS model_count
@@ -70,12 +84,19 @@ app.get('/api/model',async c=>{
  return c.json({model,endpoints:endpoints.results});
 });
 app.get('/api/events',async c=>{
- const modelId=c.req.query('model_id')||'';
+ const modelId=(c.req.query('model_id')||'').slice(0,200);
+ const kind=(c.req.query('kind')||'').slice(0,60);
+ const q=(c.req.query('q')||'').trim().slice(0,80);
+ const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
  const limit=Math.min(Math.max(Number(c.req.query('limit'))||50,1),100);
- const rows=await c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at
- FROM price_events WHERE (?='' OR model_id=?) ORDER BY created_at DESC LIMIT ?`)
- .bind(modelId,modelId,limit).all();
- return c.json({data:rows.results});
+ const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0)`;
+ const binds=[modelId,modelId,kind,kind,q,q,q] as const;
+ const [rows,count]=await Promise.all([
+  c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at
+   FROM price_events WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...binds,limit,(page-1)*limit).all(),
+  c.env.DB.prepare(`SELECT COUNT(*) AS total FROM price_events WHERE ${where}`).bind(...binds).first<{total:number}>()
+ ]);
+ return c.json({data:rows.results,page,limit,total:count?.total||0});
 });
 app.get('/feed.xml',async c=>{
  const items=await c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,created_at
