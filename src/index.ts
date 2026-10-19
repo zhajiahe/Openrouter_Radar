@@ -3,8 +3,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { z } from 'zod';
 import auth, { requireAuth } from './auth';
 import { EVENT_KINDS, now, type AppEnv, type Bindings } from './types';
-import { runCollection } from './collector';
-import { deliverPending } from './delivery';
+export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
 app.use('*',secureHeaders());
@@ -21,6 +20,8 @@ app.use('/api/*',async (c,next)=>{
 app.onError((err,c)=>{console.error('Unhandled Radar error',err);return c.json({error:'Internal server error'},500);});
 app.route('/api/auth',auth);
 app.get('/api/health',async c=>{
+ // Bootstrap or heal the singleton DO alarm. No account-level Cron slot is needed.
+ c.executionCtx.waitUntil(c.env.SCHEDULER.get(c.env.SCHEDULER.idFromName('global')).fetch('https://internal.scheduler/arm').catch(e=>console.error('scheduler bootstrap failed',e)));
  const sync=await c.env.DB.prepare("SELECT last_success,last_error FROM sync_state WHERE name='catalog'").first<{last_success:number;last_error:string|null}>();
  const total=await c.env.DB.prepare('SELECT count(*) as count FROM models').first<{count:number}>();
  const healthy=!!sync?.last_success && now()-sync.last_success<86400;
@@ -135,8 +136,5 @@ app.get('*',async c=>{
  return c.text('Build the web app with npm run build and configure the ASSETS binding.',503);
 });
 export default {
- fetch:(request:Request,env:Bindings,ctx:ExecutionContext)=>app.fetch(request,env,ctx),
- scheduled:(_controller:ScheduledController,env:Bindings,ctx:ExecutionContext)=>{
-  ctx.waitUntil((async()=>{await runCollection(env);await deliverPending(env);})());
- }
+ fetch:(request:Request,env:Bindings,ctx:ExecutionContext)=>app.fetch(request,env,ctx)
 };

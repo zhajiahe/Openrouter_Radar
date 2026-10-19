@@ -1,5 +1,6 @@
 export type Bindings = {
  DB: D1Database;
+ SCHEDULER: DurableObjectNamespace;
  ASSETS?: Fetcher;
  APP_ORIGIN: string;
  MAIL_FROM: string;

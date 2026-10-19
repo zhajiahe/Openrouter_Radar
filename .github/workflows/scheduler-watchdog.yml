@@ -1,0 +1,13 @@
+name: Radar Scheduler Watchdog
+on:
+  schedule:
+    - cron: "17 0,12 * * *"
+  workflow_dispatch:
+jobs:
+  arm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-arm singleton alarm if necessary
+        run: |
+          curl --max-time 20 --retry 2 --silent --show-error --output /dev/null \
+            https://openrouter-radar.zhajiahe1994.workers.dev/api/health
