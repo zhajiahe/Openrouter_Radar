@@ -17,29 +17,62 @@ function event(env:Bindings,endpoint:string,model:string,provider:string,kind:Ev
 }
 function storedPrices(raw:string):Prices{try{return parsePrices(JSON.parse(raw));}catch{return parsePrices({});}}
 
-async function upsertModel(env:Bindings,m:UpstreamModel,ts:number):Promise<void>{
- const old=await env.DB.prepare("SELECT id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target FROM models WHERE id=?").bind(m.id).first<ModelRow>();
- const current=modelState(m,old??undefined),pricing=m.pricing??(old?storedPrices(old.pricing_json).raw:{});
- const aggregate=await endpointId(m.id,MODEL_PROVIDER,'__model__');
- const statements:D1PreparedStatement[]=[
-  env.DB.prepare("INSERT INTO models (id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,pricing_json=excluded.pricing_json,context_length=excluded.context_length,capabilities_json=excluded.capabilities_json,expiration_date=excluded.expiration_date,alias_target=excluded.alias_target,updated_at=excluded.updated_at")
-   .bind(m.id,m.name,m.description??old?.description??'',JSON.stringify(pricing),current.context_length,current.capabilities_json,current.expiration_date,current.alias_target,ts),
-  env.DB.prepare("INSERT OR IGNORE INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
-   .bind(aggregate,m.id,MODEL_PROVIDER,'__model__','model',parsePrices(pricing).prompt,parsePrices(pricing).completion,JSON.stringify(pricing),ts,ts)
- ];
- if(old)for(const delta of modelDeltas(old,current))statements.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,ts));
- await env.DB.batch(statements);
- // A model's aggregate price is observed independently of individual Provider availability.
- await applySnapshot(env,{modelId:m.id,provider:MODEL_PROVIDER,tag:'__model__',source:'model',variant:'',prices:parsePrices(pricing)});
+export const CATALOG_INTERVAL_SECONDS=3600;
+export const PROVIDER_INTERVAL_SECONDS=3600;
+export const DEFAULT_MODELS_PER_TICK=15;
+export const MAX_MODELS_PER_TICK=25;
+
+export function modelsPerTick(configured?:string):number{
+ const value=Number(configured);
+ return Number.isFinite(value)&&value>=1
+  ?Math.min(Math.floor(value),MAX_MODELS_PER_TICK):DEFAULT_MODELS_PER_TICK;
 }
+
+/**
+ * Load current baselines in pages to avoid one D1 round trip per model.
+ * Subscriptions never affect which models get Provider scans.
+ */
+async function existingModels(env:Bindings):Promise<Map<string,ModelRow>>{
+ const models=new Map<string,ModelRow>();
+ let cursor='';
+ for(;;){
+  const page=await env.DB.prepare("SELECT id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target FROM models WHERE id>? ORDER BY id LIMIT 500")
+   .bind(cursor).all<ModelRow>();
+  for(const row of page.results)models.set(row.id,row);
+  if(page.results.length<500)break;
+  cursor=page.results[page.results.length-1].id;
+ }
+ return models;
+}
+
 export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=listModels):Promise<number>{
  const current=now();
- const lease=await env.DB.prepare("UPDATE sync_state SET leased_until=? WHERE name='catalog' AND leased_until<? AND last_success<?").bind(current+180,current,current-6*3600).run();
+ const lease=await env.DB.prepare("UPDATE sync_state SET leased_until=? WHERE name='catalog' AND leased_until<? AND last_success<?")
+  .bind(current+300,current,current-CATALOG_INTERVAL_SECONDS).run();
  if(!lease.meta.changes)return 0;
  try{
   const models=await fetcher(env.OPENROUTER_API_KEY||'');
   if(models.length===0)throw new Error('Empty model catalogue');
-  for(const model of models)await upsertModel(env,model,current);
+  const previous=await existingModels(env);
+  let stmts:D1PreparedStatement[]=[];
+  for(const m of models){
+   const old=previous.get(m.id);
+   const state=modelState(m,old),raw=m.pricing??(old?storedPrices(old.pricing_json).raw:{});
+   const prices=parsePrices(raw),aggregate=await endpointId(m.id,MODEL_PROVIDER,'__model__');
+   stmts.push(env.DB.prepare("INSERT INTO models (id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,pricing_json=excluded.pricing_json,context_length=excluded.context_length,capabilities_json=excluded.capabilities_json,expiration_date=excluded.expiration_date,alias_target=excluded.alias_target,updated_at=excluded.updated_at")
+    .bind(m.id,m.name,m.description??old?.description??'',JSON.stringify(raw),state.context_length,state.capabilities_json,state.expiration_date,state.alias_target,current));
+   stmts.push(env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET input_price=excluded.input_price,output_price=excluded.output_price,pricing_json=excluded.pricing_json,status='active',missing_count=0,checked_at=excluded.checked_at")
+    .bind(aggregate,m.id,MODEL_PROVIDER,'__model__','model',prices.prompt,prices.completion,JSON.stringify(raw),current,current));
+   stmts.push(env.DB.prepare("INSERT OR IGNORE INTO collection_jobs(model_id) VALUES(?)").bind(m.id));
+   if(old){
+    for(const delta of modelDeltas(old,state))
+     stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,current));
+    for(const delta of findPriceChanges(storedPrices(old.pricing_json),prices))
+     stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,current));
+   }
+   if(stmts.length>=50){await env.DB.batch(stmts);stmts=[];}
+  }
+  if(stmts.length)await env.DB.batch(stmts);
   await env.DB.prepare("UPDATE sync_state SET last_success=?,leased_until=0,last_error=NULL WHERE name='catalog'").bind(current).run();
   return models.length;
  }catch(e){
@@ -47,6 +80,7 @@ export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=list
   throw e;
  }
 }
+
 async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
  const subs=await env.DB.prepare("SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1").bind(record.model_id)
   .all<{id:string;user_id:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string}>();
@@ -138,10 +172,13 @@ export async function emitExpiryAlerts(env:Bindings):Promise<number>{
 }
 export async function runCollection(env:Bindings):Promise<void>{
  try{await refreshCatalog(env);}catch{/* Catalog error remains visible in /api/health */}
- const count=Math.min(Math.max(Number(env.MAX_MODELS_PER_TICK)||10,1),25);
- const jobs=await env.DB.prepare('SELECT j.model_id FROM collection_jobs j JOIN subscriptions s ON s.model_id=j.model_id WHERE j.leased_until<? AND j.last_checked<? GROUP BY j.model_id ORDER BY j.last_checked ASC LIMIT ?')
-  .bind(now(),now()-3600,count).all<{model_id:string}>();
- for(const job of jobs.results)await collectModel(env,job.model_id);
+ const count=modelsPerTick(env.MAX_MODELS_PER_TICK);
+ const jobs=await env.DB.prepare('SELECT model_id FROM collection_jobs WHERE leased_until<? AND last_checked<? ORDER BY last_checked ASC,model_id ASC LIMIT ?')
+  .bind(now(),now()-PROVIDER_INTERVAL_SECONDS,count).all<{model_id:string}>();
+ // At most three upstream endpoint requests in flight at a time.
+ for(let i=0;i<jobs.results.length;i+=3){
+  await Promise.all(jobs.results.slice(i,i+3).map(job=>collectModel(env,job.model_id)));
+ }
  await emitExpiryAlerts(env);
  await matchUnmatchedEvents(env);
  await env.DB.prepare('DELETE FROM sessions WHERE expires_at<?').bind(now()).run();
