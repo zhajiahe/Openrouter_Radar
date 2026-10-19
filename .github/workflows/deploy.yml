@@ -13,11 +13,14 @@ concurrency:
 
 jobs:
   deploy:
+    # GitHub Actions is the sole production deployment owner.
+    # This job validates, migrates D1 and deploys on every main push.
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -83,12 +86,19 @@ jobs:
           trap 'rm -f .radar-secrets.json' EXIT
           npx wrangler deploy --config wrangler.deploy.json --secrets-file .radar-secrets.json
 
-      - name: Deployment summary
-        env:
-          APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+      - name: Smoke-test deployed Worker
         shell: bash
         run: |
-          echo "### OpenRouter Radar deployed" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$APP_ORIGIN" ]]; then
-            echo "Health endpoint: $APP_ORIGIN/api/health" >> "$GITHUB_STEP_SUMMARY"
+          ORIGIN=$(node --input-type=module -e "import fs from 'node:fs'; const c=JSON.parse(fs.readFileSync('wrangler.deploy.json','utf8')); console.log(c.vars.APP_ORIGIN)")
+          # The first health request can return 503 before initial catalogue sync.
+          code=$(curl -sS -L --retry 2 --connect-timeout 10 --max-time 30 -o /tmp/radar-health.json -w '%{http_code}' "$ORIGIN/api/health")
+          echo "Health HTTP status: $code"
+          cat /tmp/radar-health.json
+          echo
+          if [[ "$code" != "200" && "$code" != "503" ]]; then
+            echo "::error::Unexpected health HTTP status $code"
+            exit 1
           fi
+          echo "### OpenRouter Radar deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL: $ORIGIN" >> "$GITHUB_STEP_SUMMARY"
+          echo "Health HTTP status: $code" >> "$GITHUB_STEP_SUMMARY"

@@ -72,9 +72,9 @@ npm run dev
 
 同一套代码可用一人，也可以开放注册。个人实例设 `OPEN_SIGNUP=false` 会阻止新账号注册，因此至少要在关闭前成功注册并验证你的管理邮箱。当前版本不含可跳过邮箱验证的后台初始管理员，避免产生后门式注册机制。
 
-## GitHub Actions 部署
+## 自动化部署
 
-也可以通过 [GitHub Actions 自部署文档](github-actions-deployment.md) 完成测试、迁移、部署和凭证配置。
+本仓库默认使用已连接的 Cloudflare Builds 在 `main` 更新后部署。GitHub Actions 的 CI 检查始终运行；如希望迁移为由 GitHub Actions 部署，请先停用 Cloudflare Builds 自动部署、补齐 Cloudflare GitHub Secrets，然后设置 `DEPLOY_VIA_GITHUB_ACTIONS=true`。两条生产部署通道不应同时启用。详细步骤参见 [GitHub Actions 自部署文档](github-actions-deployment.md)。
 
 ## 许可边界
 
