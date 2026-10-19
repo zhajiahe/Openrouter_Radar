@@ -102,7 +102,7 @@ jobs:
           echo "### OpenRouter Radar deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "URL: $ORIGIN" >> "$GITHUB_STEP_SUMMARY"
           echo "Health HTTP status: $code" >> "$GITHUB_STEP_SUMMARY"
-- name: Smoke-test React homepage and static assets
+      - name: Smoke-test React homepage and static assets
         shell: bash
         run: |
           set -euo pipefail
