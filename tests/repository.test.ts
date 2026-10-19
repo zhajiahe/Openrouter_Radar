@@ -44,3 +44,15 @@ test('React SPA assets are served directly instead of through the Worker catch-a
   assert.equal(config.assets.not_found_handling, 'single-page-application');
   assert.deepEqual(config.assets.run_worker_first, ['/api/*', '/feed.xml']);
 });
+
+test('redesigned overview reports real Provider scan coverage', () => {
+  const main = read('web/src/main.tsx');
+  const styles = read('web/src/style.css');
+  assert.match(main, /provider_scanned/);
+  assert.match(main, /role="progressbar"/);
+  assert.match(main, /aria-pressed=/);
+  assert.match(main, /查看项目|在 GitHub 查看项目/);
+  assert.match(styles, /\.radar-visual/);
+  assert.match(styles, /\.overview-grid/);
+  assert.match(styles, /@media \(max-width: 700px\)/);
+});
