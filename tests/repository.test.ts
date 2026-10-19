@@ -34,3 +34,13 @@ test('GitHub Actions is the sole automated production deployment path', () => {
   assert.match(workflow, /wrangler deploy --config wrangler\.deploy\.json --secrets-file/);
   assert.match(workflow, /Smoke-test deployed Worker/);
 });
+
+test('React SPA assets are served directly instead of through the Worker catch-all', () => {
+  const config = JSON.parse(read('wrangler.jsonc')) as {
+    assets: { directory: string; binding: string; not_found_handling: string; run_worker_first: string[] };
+  };
+  assert.equal(config.assets.directory, './web/dist');
+  assert.equal(config.assets.binding, 'ASSETS');
+  assert.equal(config.assets.not_found_handling, 'single-page-application');
+  assert.deepEqual(config.assets.run_worker_first, ['/api/*', '/feed.xml']);
+});
