@@ -36,3 +36,10 @@ test('introduced price dimension produces policy change, not a synthetic zero-do
  assert.equal(changes[0].kind,'price.policy_changed');
  assert.equal(changes[0].dimension,'cache_write');
 });
+
+test('object alias targets from OpenRouter use their routable slug',()=>{
+ const state=modelState({id:'alias/entry',name:'Entry',alias_target:{slug:'vendor/actual',name:'Actual'}} as any);
+ assert.equal(state.alias_target,'vendor/actual');
+ const same=modelState({id:'alias/entry',name:'Entry',alias_target:{name:'Renamed',slug:'vendor/actual'}} as any,state);
+ assert.deepEqual(modelDeltas(state,same),[]);
+});
