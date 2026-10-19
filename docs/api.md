@@ -38,7 +38,7 @@ Example subscription:
 {
   "model_id": "deepseek/deepseek-chat",
   "provider": null,
-  "events": ["price.decreased", "price.increased", "endpoint.added", "endpoint.removed", "endpoint.restored"],
+  "events": ["price.decreased", "price.increased", "price.policy_changed", "endpoint.added", "endpoint.removed", "endpoint.restored", "model.context_changed", "model.capability_changed", "model.alias_changed", "model.expiration_changed", "model.expiring"],
   "threshold_pct": 10,
   "frequency": "instant"
 }
@@ -56,3 +56,11 @@ No endpoint accepts a user-supplied OpenRouter API key. Billing, metering, infer
 - Price changes are computed independently for input and output dimensions using decimal arithmetic.
 - Each notified rule generates a notification record. Emails are retried up to five attempts if delivery fails.
 - Initial provider prices are not backfilled historically; all records start from first observation.
+
+## Phase 3 events and owner-key policy
+
+All upstream requests require the instance's `OPENROUTER_API_KEY` secret, which is never sent to a browser or accepted in an end-user request.
+
+Additional event types are `price.policy_changed` (cache-related dimensions and `overrides` rule changes), `model.context_changed`, `model.capability_changed`, `model.alias_changed`, `model.expiration_changed`, and `model.expiring`. The last event fires once per model, expiration timestamp and 30/7/1-day warning window. Existing subscriptions remain unchanged; select the new event types explicitly.
+
+The event store reuses the existing `price_events` table for compatibility. When the event is non-numeric, `old_price` / `new_price` carry before/after values (including JSON for complex policy differences), so do not assume these fields always represent USD per token. Only `price.increased` and `price.decreased` use `change_pct` and subscription price thresholds.

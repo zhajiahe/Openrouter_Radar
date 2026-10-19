@@ -6,8 +6,9 @@
 2. Node.js 22+，npm。
 3. 已验证发信域名的 [Resend](https://resend.com/) 发送权限。仅实例运营者持有 Resend Key。
 4. 使用 HTTPS 的公开域名（正式注册验证邮件使用）。
+5. 部署者自己的 OpenRouter API Key，必须保存为 Cloudflare Secret。
 
-无需注册用户提供 OpenRouter API Key。OpenRouter 的模型目录和 Endpoint 元数据按 2026-10-19 的公开接口访问；如果上游改变策略，会显示采集错误。应提前确认上游的 API 使用政策。
+部署者必须提供自己的 OpenRouter API Key；注册用户不需要填 Key。拥有 Key 不意味着获得任意 HTML 抓取或数据再分发许可。官方 API 发生 401/403/429 错误时不会自动启用网页抓取。
 
 ## 1. 创建数据库
 
@@ -31,6 +32,7 @@ npx wrangler d1 create openrouter-radar
 机密配置（千万不要放在 `vars` 或提交仓库）：
 
 ```bash
+npx wrangler secret put OPENROUTER_API_KEY
 npx wrangler secret put RESEND_API_KEY
 ```
 
@@ -70,6 +72,34 @@ npm run dev
 
 同一套代码可用一人，也可以开放注册。个人实例设 `OPEN_SIGNUP=false` 会阻止新账号注册，因此至少要在关闭前成功注册并验证你的管理邮箱。当前版本不含可跳过邮箱验证的后台初始管理员，避免产生后门式注册机制。
 
+## GitHub Actions 部署
+
+也可以通过 [GitHub Actions 自部署文档](github-actions-deployment.md) 完成测试、迁移、部署和凭证配置。
+
+## 许可边界
+
+当前仅启用 OpenRouter 官方 API 采集。缺失、不可用或限流的 API 绝不自动回退到 HTML 抓取；如未来实现爬取型补充数据源，必须先获得相关网站许可，并遵守 robots、条款及限流限制。
+
 ## 恢复与升级
 
 备份 D1 前先导出数据库并核实恢复计划。升级时先备份，再通过 `d1 migrations apply` 执行新增迁移；代码更新使用 `wrangler deploy`，避免直接修改已有迁移文件。
+
+## 本仓库维护者当前实例（2026-10-19）
+
+- 实例 URL：`https://openrouter-radar.zhajiahe1994.workers.dev`
+- D1 名称：`openrouter-radar`；数据库已创建且已执行 `0001_initial.sql`
+- 调度：`RadarScheduler` Durable Object Alarm，每 15 分钟；不占用 Workers Free 的 Cron Trigger 名额
+- Cloudflare Builds 已连接 GitHub `main`，合并或推送后自动构建部署
+- **目前 `OPEN_SIGNUP=false`**：还未配置实例邮件服务，防止用户注册后无法验证邮箱；不应声称公开注册已可用
+
+### 启用真正的公开注册邮件
+
+在 Cloudflare Workers 的 `openrouter-radar` 项目中：
+
+1. 在 Resend 验证你实际拥有的发信域名。
+2. 在 Cloudflare Worker 的 Secrets 中添加 `RESEND_API_KEY`（不要放到 GitHub 或公开配置里）。
+3. 将 `wrangler.jsonc` 中的 `MAIL_FROM` 改为已验证的地址。
+4. 将 `OPEN_SIGNUP` 设置为 `true`，提交到 `main`，等待 Cloudflare Builds 成功。
+5. 用自己的邮箱执行注册、验证、登录、订阅并确认收到测试告警后，再对外公开推广。
+
+公开实例建议启用 Turnstile/WAF、防滥用额度及发信上限。普通订阅者始终无需任何 OpenRouter API Key。
