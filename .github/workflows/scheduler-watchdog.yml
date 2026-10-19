@@ -11,5 +11,8 @@ jobs:
     steps:
       - name: Re-arm singleton alarm if necessary
         run: |
-          curl --max-time 20 --retry 2 --silent --show-error --output /dev/null \
+          curl --location --max-time 30 --retry 2 --show-error \
+            --output ./health-response.txt \
+            --write-out 'HTTP %{http_code} bytes %{size_download}\n' \
             https://openrouter-radar.zhajiahe1994.workers.dev/api/health
+          head -c 500 ./health-response.txt || true
