@@ -71,7 +71,7 @@ function App(){
  const [status,setStatus]=useState<{status:string;catalog_last_success:number|null;provider_total?:number;provider_scanned?:number;provider_due?:number;provider_errors?:number}>({status:'degraded',catalog_last_success:null});
 
  async function loadPublic(){
-  const results=await Promise.allSettled([api<typeof stats>('/stats'),api<{data:Event[]}>('/events?limit=40'),api<typeof status>('/health')]);
+  const results=await Promise.allSettled([api<typeof stats>('/stats'),api<{data:Event[]}>('/events?limit=40'),fetch('/api/health',{credentials:'same-origin'}).then(r=>r.json() as Promise<typeof status>)]);
   if(results[0].status==='fulfilled')setStats(results[0].value);
   if(results[1].status==='fulfilled')setRecentEvents(results[1].value.data);
   if(results[2].status==='fulfilled')setStatus(results[2].value);
@@ -115,7 +115,7 @@ function App(){
   if(params.has('reset'))setAuthMode('reset');
   api<{user:{id:string;email:string}}>('/auth/me').then(r=>{setUser(r.user);}).catch(()=>{});
   api<{data:ProviderOption[]}>('/providers').then(r=>setProviders(r.data)).catch(()=>{});
-  const modelId=decodeURIComponent(new URLSearchParams(location.hash.slice(1)).get('model')||'');
+  const modelId=new URLSearchParams(location.hash.slice(1)).get('model')||'';
   if(modelId){
    void api<{model:Model}>('/model?id='+encodeURIComponent(modelId)).then(r=>void inspect(r.model)).catch(()=>{});
   }
@@ -170,6 +170,13 @@ function App(){
   try{await api('/notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH'});await loadPrivate();}
   catch(e){setError((e as Error).message);}
  }
+ async function copyModelLink(modelId:string){
+  const link=location.origin+location.pathname+'#model='+encodeURIComponent(modelId);
+  try{
+   if(!navigator.clipboard?.writeText)throw new Error('Clipboard not available');
+   await navigator.clipboard.writeText(link);setMessage('模型链接已复制');
+  }catch{setError('复制失败，请从地址栏复制当前模型链接');}
+ }
  async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);setView('overview');}
  const unread=notices.filter(n=>!n.read_at).length;
  const titles:Record<string,string>={overview:'Overview',catalog:'Models',events:'Changes',watches:'Watchlist',notices:'Notifications',account:'Account'};
@@ -216,7 +223,7 @@ function App(){
       </div>
      </div>
      <div className="metrics">
-      {[[stats.models,'模型总数','▦','目录内的公开模型'],[stats.providers,'活跃 Provider','◇','已发现的服务商'],[stats.subscriptions,'全站订阅','◎','用户设置的提醒规则'],[stats.events24h,'24小时事件','↗','过去一天的真实变化']].map(([value,labelText,icon,note])=>
+      {[[stats.models,'模型总数','▦','目录内的公开模型'],[stats.providers,'活跃 Provider','◇','已发现的服务商'],[scanned,'已采集模型','◉','Provider 快照覆盖量'],[stats.events24h,'24小时事件','↗','过去一天的真实变化']].map(([value,labelText,icon,note])=>
        <div className="metric" key={String(labelText)}><div className="metric-label"><span aria-hidden="true">{icon}</span>{labelText}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
      </div>
      <div className="section-head"><div><h2>Recent changes</h2><p className="section-heading-sub">仅展示实际发现的变化，不生成模拟数据</p></div><button className="text-action" onClick={()=>setView('events')}>全部事件 ↗</button></div>
@@ -265,7 +272,7 @@ function App(){
        <div className="pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Previous</button><span>{page} / {Math.max(1,Math.ceil(modelTotal/30))}</span><button disabled={page*30>=modelTotal} onClick={()=>setPage(p=>p+1)}>Next →</button></div>
       </div>
       <div className="panel detail-panel">{selected?<>
-       <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>{void navigator.clipboard?.writeText(location.origin+'/#model='+encodeURIComponent(selected.id));setMessage('模型链接已复制');}}>复制链接 ↗</button></div>
+       <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}>复制链接 ↗</button></div>
        <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code></div></div>
        <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{endpoints.filter(e=>e.source==='provider'&&e.status==='active').length}</strong> Active endpoints</span></div>
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
