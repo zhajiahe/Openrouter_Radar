@@ -17,6 +17,14 @@ function normalizeDate(input:unknown):number|null{
  }
  return null;
 }
+function normalizeAlias(value:unknown):string|null{
+ if(typeof value==='string')return value;
+ if(value&&typeof value==='object'&&!Array.isArray(value)){
+  const slug=(value as Record<string,unknown>).slug;
+  return typeof slug==='string'?slug:null;
+ }
+ return null;
+}
 function stableCapabilities(input:UpstreamModel):string|null{
  if(input.architecture===undefined&&input.supported_parameters===undefined)return null;
  const architecture=input.architecture&&typeof input.architecture==='object'?input.architecture:{};
@@ -30,7 +38,7 @@ export function modelState(input:UpstreamModel,old?:ModelState):ModelState{
  return {
   context_length:input.context_length===undefined?old?.context_length??null:input.context_length??null,
   expiration_date:input.expiration_date===undefined?old?.expiration_date??null:normalizeDate(input.expiration_date),
-  alias_target:input.alias_target===undefined?old?.alias_target??null:input.alias_target??null,
+  alias_target:input.alias_target===undefined?old?.alias_target??null:normalizeAlias(input.alias_target),
   capabilities_json:stableCapabilities(input)??old?.capabilities_json??'{}'
  };
 }
