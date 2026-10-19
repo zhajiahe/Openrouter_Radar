@@ -1,28 +1,45 @@
-import { listModels, listEndpoints, type UpstreamEndpoint } from './openrouter';
-import { parsePrices, endpointId, findPriceChanges, thresholdMatches, type Prices } from './pricing';
-import { now, type Bindings, type EventKind } from './types';
+import {listModels,listEndpoints,type UpstreamModel,type UpstreamEndpoint} from './openrouter';
+import {parsePrices,endpointId,findPriceChanges,thresholdMatches,type Prices} from './pricing';
+import {modelState,modelDeltas,expiryWindow,type ModelState} from './phase3';
+import {now,type Bindings,type EventKind} from './types';
 
-type Existing={id:string;input_price:string|null;output_price:string|null;status:string;missing_count:number};
-type Observed={modelId:string;provider:string;tag:string;source:'model'|'provider';variant:string;prices:Prices};
-const MAX_PER_TICK=25;
+type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number};
+type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string};
+type Observation={modelId:string;provider:string;tag:string;source:'model'|'provider';variant:string;prices:Prices};
+type EventRow={id:string;model_id:string;provider:string;kind:EventKind;dimension:string|null;change_pct:number|null;created_at:number};
+const MODEL_PROVIDER='OpenRouter (model aggregate)';
+function eventStatement(env:Bindings,eventId:string,endpoint:string,model:string,provider:string,kind:EventKind,dimension:string|null,oldValue:string|null,newValue:string|null,pct:number|null,ts:number):D1PreparedStatement{
+ return env.DB.prepare("INSERT OR IGNORE INTO price_events (id,endpoint_id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+  .bind(eventId,endpoint,model,provider,kind,dimension,oldValue,newValue,pct,ts);
+}
+function event(env:Bindings,endpoint:string,model:string,provider:string,kind:EventKind,dimension:string|null=null,oldValue:string|null=null,newValue:string|null=null,pct:number|null=null,ts=now()):D1PreparedStatement{
+ return eventStatement(env,crypto.randomUUID(),endpoint,model,provider,kind,dimension,oldValue,newValue,pct,ts);
+}
+function storedPrices(raw:string):Prices{try{return parsePrices(JSON.parse(raw));}catch{return parsePrices({});}}
 
+async function upsertModel(env:Bindings,m:UpstreamModel,ts:number):Promise<void>{
+ const old=await env.DB.prepare("SELECT id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target FROM models WHERE id=?").bind(m.id).first<ModelRow>();
+ const current=modelState(m,old??undefined),pricing=m.pricing??(old?storedPrices(old.pricing_json).raw:{});
+ const aggregate=await endpointId(m.id,MODEL_PROVIDER,'__model__');
+ const statements:D1PreparedStatement[]=[
+  env.DB.prepare("INSERT INTO models (id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,pricing_json=excluded.pricing_json,context_length=excluded.context_length,capabilities_json=excluded.capabilities_json,expiration_date=excluded.expiration_date,alias_target=excluded.alias_target,updated_at=excluded.updated_at")
+   .bind(m.id,m.name,m.description??old?.description??'',JSON.stringify(pricing),current.context_length,current.capabilities_json,current.expiration_date,current.alias_target,ts),
+  env.DB.prepare("INSERT OR IGNORE INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+   .bind(aggregate,m.id,MODEL_PROVIDER,'__model__','model',parsePrices(pricing).prompt,parsePrices(pricing).completion,JSON.stringify(pricing),ts,ts)
+ ];
+ if(old)for(const delta of modelDeltas(old,current))statements.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,ts));
+ await env.DB.batch(statements);
+ // A model's aggregate price is observed independently of individual Provider availability.
+ await applySnapshot(env,{modelId:m.id,provider:MODEL_PROVIDER,tag:'__model__',source:'model',variant:'',prices:parsePrices(pricing)});
+}
 export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=listModels):Promise<number>{
  const current=now();
- const lease=await env.DB.prepare("UPDATE sync_state SET leased_until=? WHERE name='catalog' AND leased_until<? AND last_success<?")
- .bind(current+180,current,current-6*3600).run();
+ const lease=await env.DB.prepare("UPDATE sync_state SET leased_until=? WHERE name='catalog' AND leased_until<? AND last_success<?").bind(current+180,current,current-6*3600).run();
  if(!lease.meta.changes)return 0;
- try {
-  const models=await fetcher();
-  // Avoid deletion on upstream partial responses. Models not returned remain in our catalogue.
+ try{
+  const models=await fetcher(env.OPENROUTER_API_KEY||'');
   if(models.length===0)throw new Error('Empty model catalogue');
-  for(let i=0;i<models.length;i+=40){
-   const batch=models.slice(i,i+40).map(m=>env.DB.prepare(`INSERT INTO models(id,name,description,pricing_json,context_length,updated_at)
-    VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,
-    pricing_json=excluded.pricing_json,context_length=excluded.context_length,updated_at=excluded.updated_at
-    WHERE models.name!=excluded.name OR models.pricing_json!=excluded.pricing_json OR models.description!=excluded.description`)
-    .bind(m.id,m.name,m.description||'',JSON.stringify(m.pricing||{}),m.context_length||null,current));
-   await env.DB.batch(batch);
-  }
+  for(const model of models)await upsertModel(env,model,current);
   await env.DB.prepare("UPDATE sync_state SET last_success=?,leased_until=0,last_error=NULL WHERE name='catalog'").bind(current).run();
   return models.length;
  }catch(e){
@@ -30,109 +47,102 @@ export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=list
   throw e;
  }
 }
-type EventRow={id:string;model_id:string;provider:string;kind:EventKind;dimension:string|null;change_pct:number|null;created_at:number};
-async function matchEvent(env:Bindings,event:EventRow):Promise<void>{
- const subscriptions=await env.DB.prepare(`SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency
- FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1`)
- .bind(event.model_id).all<{id:string;user_id:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string}>();
- const statements:D1PreparedStatement[]=[];
- for(const sub of subscriptions.results){
-  if(sub.provider!==null&&sub.provider!==event.provider)continue;
-  let selected:string[];try{selected=JSON.parse(sub.events_json)}catch{continue;}
-  if(!selected.includes(event.kind))continue;
-  if(event.dimension&&!thresholdMatches(event.change_pct,sub.threshold_pct))continue;
-  // Send daily summaries at the first 08:00 UTC after an event.
-  const scheduled=sub.frequency==='daily' ? Math.ceil((event.created_at-8*3600)/86400)*86400+8*3600 : now();
-  statements.push(env.DB.prepare(`INSERT OR IGNORE INTO notifications
-   (id,user_id,event_id,subscription_id,next_attempt_at,created_at) VALUES(?,?,?,?,?,?)`)
-   .bind(crypto.randomUUID(),sub.user_id,event.id,sub.id,scheduled,event.created_at));
+async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
+ const subs=await env.DB.prepare("SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1").bind(record.model_id)
+  .all<{id:string;user_id:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string}>();
+ const stmts:D1PreparedStatement[]=[];
+ for(const sub of subs.results){
+  if(sub.provider!==null&&sub.provider!==record.provider)continue;
+  let selected:string[];try{selected=JSON.parse(sub.events_json);}catch{continue;}
+  if(!selected.includes(record.kind))continue;
+  if((record.kind==='price.increased'||record.kind==='price.decreased')&&!thresholdMatches(record.change_pct,sub.threshold_pct))continue;
+  const scheduled=sub.frequency==='daily'?Math.ceil((record.created_at-8*3600)/86400)*86400+8*3600:now();
+  stmts.push(env.DB.prepare("INSERT OR IGNORE INTO notifications (id,user_id,event_id,subscription_id,next_attempt_at,created_at) VALUES(?,?,?,?,?,?)")
+   .bind(crypto.randomUUID(),sub.user_id,record.id,sub.id,scheduled,record.created_at));
  }
- statements.push(env.DB.prepare('UPDATE price_events SET matched_at=? WHERE id=? AND matched_at IS NULL').bind(now(),event.id));
- // D1 batch rolls back all writes if any insert or the watermark update fails.
- await env.DB.batch(statements);
+ stmts.push(env.DB.prepare('UPDATE price_events SET matched_at=? WHERE id=? AND matched_at IS NULL').bind(now(),record.id));
+ await env.DB.batch(stmts);
 }
 export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<number>{
- const events=await env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,change_pct,created_at
- FROM price_events WHERE matched_at IS NULL ORDER BY created_at ASC LIMIT ?`).bind(limit).all<EventRow>();
- for(const event of events.results)await matchEvent(env,event);
- return events.results.length;
+ const records=await env.DB.prepare("SELECT id,model_id,provider,kind,dimension,change_pct,created_at FROM price_events WHERE matched_at IS NULL ORDER BY created_at ASC LIMIT ?").bind(limit).all<EventRow>();
+ for(const record of records.results)await matchEvent(env,record);
+ return records.results.length;
 }
-async function emit(env:Bindings,endpointIdValue:string,modelId:string,provider:string,kind:EventKind,dimension:string|null,oldValue:string|null,newValue:string|null,pct:number|null):Promise<void>{
- const eventId=crypto.randomUUID(),ts=now();
- await env.DB.prepare(`INSERT INTO price_events(id,endpoint_id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at)
- VALUES(?,?,?,?,?,?,?,?,?,?)`).bind(eventId,endpointIdValue,modelId,provider,kind,dimension,oldValue,newValue,pct,ts).run();
- // If rule matching fails, this event remains unmatched and is replayed next Cron.
- await matchEvent(env,{id:eventId,model_id:modelId,provider,kind,dimension,change_pct:pct,created_at:ts});
-}
-export async function applySnapshot(env:Bindings,observation:Observed,allowAdded=false):Promise<void>{
- const {modelId,provider,tag,source,variant,prices}=observation;
- const id=await endpointId(modelId,provider,tag,variant);
- const previous=await env.DB.prepare('SELECT id,input_price,output_price,status,missing_count FROM endpoints WHERE id=?')
- .bind(id).first<Existing>();
+export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false):Promise<void>{
+ const {modelId,provider,tag,source,variant,prices}=o,id=await endpointId(modelId,provider,tag,variant);
+ const previous=await env.DB.prepare('SELECT id,input_price,output_price,pricing_json,status,missing_count FROM endpoints WHERE id=?').bind(id).first<Existing>();
  const ts=now();
  if(!previous){
-  await env.DB.prepare(`INSERT INTO endpoints
-  (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at)
-  VALUES(?,?,?,?,?,?,?,?,?,?)`).bind(id,modelId,provider,tag,source,prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,ts).run();
-  if(allowAdded)await emit(env,id,modelId,provider,'endpoint.added',null,null,null,null);
-  return;
+  const stmts:D1PreparedStatement[]=[
+   env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+    .bind(id,modelId,provider,tag,source,prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,ts)
+  ];
+  if(allowAdded)stmts.push(event(env,id,modelId,provider,'endpoint.added',null,null,null,null,ts));
+  await env.DB.batch(stmts);return;
  }
- const changes=findPriceChanges({prompt:previous.input_price,completion:previous.output_price,raw:{}},prices);
- await env.DB.prepare(`UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',
- missing_count=0,checked_at=? WHERE id=?`).bind(prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,id).run();
- if(previous.status==='missing')await emit(env,id,modelId,provider,'endpoint.restored',null,null,null,null);
- for(const change of changes)await emit(env,id,modelId,provider,change.kind,change.dimension,change.oldPrice,change.newPrice,change.percent);
+ const stmts:D1PreparedStatement[]=[
+  env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=? WHERE id=?")
+   .bind(prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,id)
+ ];
+ if(previous.status==='missing')stmts.push(event(env,id,modelId,provider,'endpoint.restored',null,null,null,null,ts));
+ for(const delta of findPriceChanges(storedPrices(previous.pricing_json),prices)){
+  stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts));
+ }
+ await env.DB.batch(stmts);
 }
 export async function collectModel(env:Bindings,modelId:string,fetcher:typeof listEndpoints=listEndpoints):Promise<void>{
- const current=now();
- const lease=await env.DB.prepare('UPDATE collection_jobs SET leased_until=? WHERE model_id=? AND leased_until<?')
- .bind(current+180,modelId,current).run();
+ const current=now(),lease=await env.DB.prepare('UPDATE collection_jobs SET leased_until=? WHERE model_id=? AND leased_until<?')
+  .bind(current+180,modelId,current).run();
  if(!lease.meta.changes)return;
  try{
-  let items:UpstreamEndpoint[]|null=null;
-  try {items=await fetcher(modelId);if(items.length===0)throw new Error('No endpoints returned; may be transient');}
-  catch(e){
-   // Degrade to model-level prices, never invent provider data on endpoint API failure.
-   const model=await env.DB.prepare('SELECT pricing_json FROM models WHERE id=?').bind(modelId).first<{pricing_json:string}>();
-   if(model)await applySnapshot(env,{modelId,provider:'OpenRouter (model aggregate)',tag:'__model__',source:'model',variant:'',prices:parsePrices(JSON.parse(model.pricing_json))});
-   throw e;
-  }
-  const existingRows=await env.DB.prepare("SELECT id,status,missing_count FROM endpoints WHERE model_id=? AND source='provider'").bind(modelId).all<Existing>();
-  const previousIds=new Set(existingRows.results.map(row=>row.id));
-  const seen=new Set<string>();
-  const initial=existingRows.results.length===0;
+  if(!env.OPENROUTER_API_KEY)throw new Error('OPENROUTER_API_KEY is not configured');
+  const items:UpstreamEndpoint[]=await fetcher(modelId,env.OPENROUTER_API_KEY);
+  if(items.length===0)throw new Error('Empty endpoint response; no removal inferred');
+  const existing=await env.DB.prepare("SELECT id,provider,status,missing_count FROM endpoints WHERE model_id=? AND source='provider'").bind(modelId)
+   .all<{id:string;provider:string;status:string;missing_count:number}>();
+  const prev=new Set(existing.results.map(row=>row.id)),seen=new Set<string>(),initial=existing.results.length===0;
   for(const item of items){
-   const provider=item.provider_name,tag=item.tag||'',variant=[item.quantization||'',String(item.service_tier||''),tag?'':item.name||''].join('|');
+   const provider=item.provider_name,tag=item.tag||'';
+   const variant=[item.quantization||'',String(item.service_tier||''),tag?'':item.name||''].join('|');
    const id=await endpointId(modelId,provider,tag,variant);
    if(seen.has(id))continue;
    seen.add(id);
-   await applySnapshot(env,{modelId,provider,tag,source:'provider',variant,prices:parsePrices(item.pricing)},!initial&&!previousIds.has(id));
+   await applySnapshot(env,{modelId,provider,tag,source:'provider',variant,prices:parsePrices(item.pricing)},!initial&&!prev.has(id));
   }
-  for(const row of existingRows.results){
+  for(const row of existing.results){
    if(seen.has(row.id)||row.status==='missing')continue;
-   const count=row.missing_count+1;
-   await env.DB.prepare("UPDATE endpoints SET missing_count=?,status=?,checked_at=? WHERE id=?")
-    .bind(count,count>=2?'missing':'active',current,row.id).run();
-   if(count>=2){
-    const removed=await env.DB.prepare('SELECT provider FROM endpoints WHERE id=?').bind(row.id).first<{provider:string}>();
-    await emit(env,row.id,modelId,removed?.provider||'unknown','endpoint.removed',null,null,null,null);
-   }
+   const count=row.missing_count+1,stmts:D1PreparedStatement[]=[
+    env.DB.prepare('UPDATE endpoints SET missing_count=?,status=?,checked_at=? WHERE id=?')
+     .bind(count,count>=2?'missing':'active',current,row.id)
+   ];
+   if(count>=2)stmts.push(event(env,row.id,modelId,row.provider,'endpoint.removed',null,null,null,null,current));
+   await env.DB.batch(stmts);
   }
   await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=NULL WHERE model_id=?').bind(current,modelId).run();
  }catch(e){
-  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=? WHERE model_id=?')
-   .bind(current,String(e).slice(0,200),modelId).run();
+  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=? WHERE model_id=?').bind(current,String(e).slice(0,200),modelId).run();
  }
 }
+export async function emitExpiryAlerts(env:Bindings):Promise<number>{
+ const current=now();
+ const rows=await env.DB.prepare("SELECT m.id,m.expiration_date,e.id AS endpoint_id FROM models m JOIN endpoints e ON e.model_id=m.id AND e.source='model' WHERE m.expiration_date>? AND m.expiration_date<=? LIMIT 500")
+  .bind(current,current+30*86400).all<{id:string;expiration_date:number;endpoint_id:string}>();
+ const stmts:D1PreparedStatement[]=[];
+ for(const row of rows.results){
+  const window=expiryWindow(row.expiration_date,current);if(!window)continue;
+  const id=['expiry',row.id,row.expiration_date,window].join(':');
+  stmts.push(eventStatement(env,id,row.endpoint_id,row.id,MODEL_PROVIDER,'model.expiring','days_remaining',null,String(window),null,current));
+ }
+ for(let i=0;i<stmts.length;i+=50)await env.DB.batch(stmts.slice(i,i+50));
+ return stmts.length;
+}
 export async function runCollection(env:Bindings):Promise<void>{
- try{await refreshCatalog(env);}catch{/* health endpoint exposes last error */}
- const count=Math.min(Math.max(Number(env.MAX_MODELS_PER_TICK)||10,1),MAX_PER_TICK);
- const jobs=await env.DB.prepare(`SELECT j.model_id FROM collection_jobs j
- JOIN subscriptions s ON s.model_id=j.model_id
- WHERE j.leased_until<? AND j.last_checked<?
- GROUP BY j.model_id ORDER BY j.last_checked ASC LIMIT ?`)
- .bind(now(),now()-3600,count).all<{model_id:string}>();
+ try{await refreshCatalog(env);}catch{/* Catalog error remains visible in /api/health */}
+ const count=Math.min(Math.max(Number(env.MAX_MODELS_PER_TICK)||10,1),25);
+ const jobs=await env.DB.prepare('SELECT j.model_id FROM collection_jobs j JOIN subscriptions s ON s.model_id=j.model_id WHERE j.leased_until<? AND j.last_checked<? GROUP BY j.model_id ORDER BY j.last_checked ASC LIMIT ?')
+  .bind(now(),now()-3600,count).all<{model_id:string}>();
  for(const job of jobs.results)await collectModel(env,job.model_id);
+ await emitExpiryAlerts(env);
  await matchUnmatchedEvents(env);
  await env.DB.prepare('DELETE FROM sessions WHERE expires_at<?').bind(now()).run();
  await env.DB.prepare('DELETE FROM email_tokens WHERE expires_at<?').bind(now()).run();

@@ -6,8 +6,9 @@
 2. Node.js 22+，npm。
 3. 已验证发信域名的 [Resend](https://resend.com/) 发送权限。仅实例运营者持有 Resend Key。
 4. 使用 HTTPS 的公开域名（正式注册验证邮件使用）。
+5. 部署者自己的 OpenRouter API Key，必须保存为 Cloudflare Secret。
 
-无需注册用户提供 OpenRouter API Key。OpenRouter 的模型目录和 Endpoint 元数据按 2026-10-19 的公开接口访问；如果上游改变策略，会显示采集错误。应提前确认上游的 API 使用政策。
+部署者必须提供自己的 OpenRouter API Key；注册用户不需要填 Key。拥有 Key 不意味着获得任意 HTML 抓取或数据再分发许可。官方 API 发生 401/403/429 错误时不会自动启用网页抓取。
 
 ## 1. 创建数据库
 
@@ -31,6 +32,7 @@ npx wrangler d1 create openrouter-radar
 机密配置（千万不要放在 `vars` 或提交仓库）：
 
 ```bash
+npx wrangler secret put OPENROUTER_API_KEY
 npx wrangler secret put RESEND_API_KEY
 ```
 
@@ -69,6 +71,14 @@ npm run dev
 ## 个人与公开实例的区别
 
 同一套代码可用一人，也可以开放注册。个人实例设 `OPEN_SIGNUP=false` 会阻止新账号注册，因此至少要在关闭前成功注册并验证你的管理邮箱。当前版本不含可跳过邮箱验证的后台初始管理员，避免产生后门式注册机制。
+
+## GitHub Actions 部署
+
+也可以通过 [GitHub Actions 自部署文档](github-actions-deployment.md) 完成测试、迁移、部署和凭证配置。
+
+## 许可边界
+
+当前仅启用 OpenRouter 官方 API 采集。缺失、不可用或限流的 API 绝不自动回退到 HTML 抓取；如未来实现爬取型补充数据源，必须先获得相关网站许可，并遵守 robots、条款及限流限制。
 
 ## 恢复与升级
 

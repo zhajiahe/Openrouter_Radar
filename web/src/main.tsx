@@ -2,18 +2,29 @@ import React,{useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 
-type Model={id:string;name:string;context_length:number|null;updated_at:number};
+type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null};
 type Endpoint={id:string;provider:string;tag:string;source:string;input_price:string|null;output_price:string|null;status:string;checked_at:number};
 type Watch={id:string;model_id:string;name:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string};
 type Event={id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number};
 type Notice=Event&{id:string;status:string;read_at:number|null;sent_at:number|null;created_at:number};
 const EVENTS=[
- ['price.decreased','价格下降'],['price.increased','价格上涨'],['endpoint.added','新 Provider'],['endpoint.removed','端点下线'],['endpoint.restored','端点恢复']
+ ['price.decreased','价格下降'],['price.increased','价格上涨'],['endpoint.added','新 Provider'],['endpoint.removed','端点下线'],['endpoint.restored','端点恢复'],['price.policy_changed','定价规则变化'],['model.context_changed','上下文变化'],['model.capability_changed','模型能力变化'],['model.alias_changed','别名目标变化'],['model.expiration_changed','到期日期变化'],['model.expiring','即将到期']
 ] as const;
 const label=(kind:string)=>EVENTS.find(e=>e[0]===kind)?.[1]||kind;
 const time=(ts:number)=>new Date(ts*1000).toLocaleString();
 const million=(price:string|null)=>price===null?'—':'$'+(Number(price)*1e6).toLocaleString(undefined,{maximumFractionDigits:5});
 const endpointPrice=(price:string|null)=>million(price);
+const formatEvent=(e:Event):string=>{
+ if(e.kind==='model.expiring')return '距离到期最多 '+(e.new_price||'?')+' 天';
+ if(e.kind==='price.policy_changed')return (e.dimension||'计价规则')+' 已发生变化';
+ if(e.kind.startsWith('model.'))return (e.dimension||'模型属性')+'：'+(e.old_price||'未知').slice(0,90)+' → '+(e.new_price||'未知').slice(0,90);
+ if(e.old_price!==null&&e.new_price!==null){
+   const token=['input','output','cache_read','cache_write','cache_write_1h'].includes(e.dimension||'');
+   const f=(v:string)=>token?million(v):v;
+   return (e.dimension||'价格')+': '+f(e.old_price)+' → '+f(e.new_price)+(token?' / 百万 Token':' / 原始计费单位');
+ }
+ return 'Provider 端点状态变化';
+};
 async function api<T>(path:string,options?:RequestInit):Promise<T>{
  const r=await fetch('/api'+path,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options});
  const body=await r.json().catch(()=>({error:'Server unavailable'})) as {error?:string};
@@ -152,7 +163,7 @@ function App(){
       <div className="panel detail-panel">{selected?<>
        <div className="panel-title"><span>模型详情</span><span className="light-tag">实时采集快照</span></div>
        <h2>{selected.name}</h2><code className="code-id">{selected.id}</code>
-       <p className="muted">上下文 {selected.context_length?.toLocaleString()||'未知'} tokens</p>
+       <p className="muted">上下文 {selected.context_length?.toLocaleString()||'未知'} tokens{selected.alias_target?' · 别名指向 '+selected.alias_target:''}{selected.expiration_date?' · 到期 '+new Date(selected.expiration_date*1000).toLocaleDateString():''}</p>
        <h3>Provider Endpoint</h3>
        <div className="scroll-x"><table><thead><tr><th>Provider</th><th>输入 $/M</th><th>输出 $/M</th><th>采集时间</th></tr></thead><tbody>
         {endpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.tag}</small></td><td>{endpointPrice(ep.input_price)}</td><td>{endpointPrice(ep.output_price)}</td><td><small>{time(ep.checked_at)}</small></td></tr>)}
@@ -175,7 +186,7 @@ function App(){
     </>}
     {view==='notices'&&<><div className="page-heading"><div><div className="eyebrow">YOUR ALERTS</div><h1>通知中心</h1><p>站内记录每次命中订阅规则的事件，邮件发送状态同步展示。</p></div></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">{notices.length?notices.map(n=><div className={'notice '+(!n.read_at?'unread':'')} key={n.id}>
-      <div><div className="notice-title">{label(n.kind)} <span className="tag">{n.status==='sent'?'邮件已发':n.status==='failed'?'发送失败':'待发送'}</span></div><strong>{n.model_id}</strong><p>{n.provider} · {n.dimension||'端点状态'} · {n.old_price===null?'':million(n.old_price)+' → '}{million(n.new_price)} {n.change_pct!==null?`(${n.change_pct.toFixed(1)}%)`:''}</p><small>{time(n.created_at)}</small></div>
+      <div><div className="notice-title">{label(n.kind)} <span className="tag">{n.status==='sent'?'邮件已发':n.status==='failed'?'发送失败':'待发送'}</span></div><strong>{n.model_id}</strong><p>{n.provider} · {formatEvent(n)}</p><small>{time(n.created_at)}</small></div>
       {!n.read_at&&<button className="text-action" onClick={()=>void readNotice(n.id)}>标为已读</button>}
      </div>):<div className="empty roomy">暂时没有通知，模型价格有变化时这里会出现记录。</div>}</div>}
     </>}
@@ -200,7 +211,7 @@ function App(){
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>免费公开注册。我们不会要求你的 OpenRouter API Key。</p><button className="primary" onClick={onLogin}>注册 / 登录 →</button></div>}
 function EventsTable({data}:{data:Event[]}){
  return <div className="panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
- {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td>{e.old_price!==null&&e.new_price!==null?<><span>{million(e.old_price)} → {million(e.new_price)}</span><small className="cell-small">{e.dimension==='input'?'输入':'输出'} · {e.change_pct===null?'首次从免费转为收费':e.change_pct.toFixed(1)+'%'}</small></>:<span className="muted">端点状态变化</span>}</td><td><small>{time(e.created_at)}</small></td></tr>)}
+ {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td><span>{formatEvent(e)}</span></td><td><small>{time(e.created_at)}</small></td></tr>)}
  </tbody></table>{!data.length&&<div className="empty roomy">还没有价格变化事件。完成首次采集后，系统只记录后续真实变化。</div>}</div></div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

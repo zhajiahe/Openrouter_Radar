@@ -4,8 +4,11 @@ import { now, type Bindings } from './types';
 type Pending={id:string;user_id:string;email:string;frequency:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number;event_id:string};
 export function notificationText(rows:Pending[],origin:string):string{
  const lines=['OpenRouter Radar · price and endpoint updates','',...rows.map(r=>{
-  const change=r.old_price!==null&&r.new_price!==null
-   ? ` · ${r.dimension}: ${r.old_price} → ${r.new_price} USD/token` : '';
+  const isPrice=r.kind==='price.increased'||r.kind==='price.decreased';
+  const change=isPrice&&r.old_price!==null&&r.new_price!==null
+   ? ` · ${r.dimension}: ${r.old_price} → ${r.new_price} (upstream pricing unit)`
+   : r.kind==='model.expiring' ? ` · within ${r.new_price||'?'} day(s) of expiry`
+   : r.dimension ? ` · ${r.dimension}: ${(r.old_price||'unknown').slice(0,100)} → ${(r.new_price||'unknown').slice(0,100)}` : '';
   return `• ${r.model_id} / ${r.provider} — ${r.kind}${change}`;
  }), '', 'Manage alerts: '+new URL('/',origin).toString(),'You receive this email because you subscribed to Radar monitoring.'];
  return lines.join('\n');

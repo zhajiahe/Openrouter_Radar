@@ -24,7 +24,7 @@ app.get('/api/health',async c=>{
  c.executionCtx.waitUntil(c.env.SCHEDULER.get(c.env.SCHEDULER.idFromName('global')).fetch('https://internal.scheduler/arm').catch(e=>console.error('scheduler bootstrap failed',e)));
  const sync=await c.env.DB.prepare("SELECT last_success,last_error FROM sync_state WHERE name='catalog'").first<{last_success:number;last_error:string|null}>();
  const total=await c.env.DB.prepare('SELECT count(*) as count FROM models').first<{count:number}>();
- const healthy=!!sync?.last_success && now()-sync.last_success<86400;
+ const healthy=!!c.env.OPENROUTER_API_KEY&&!!sync?.last_success&&now()-sync.last_success<86400;
  return c.json({status:healthy?'ok':'degraded',models:total?.count||0,catalog_last_success:sync?.last_success||null,catalog_error:sync?.last_error||null,provider_monitoring:'subscriber_models',server_time:now()},healthy?200:503);
 });
 app.get('/api/stats',async c=>{
@@ -55,7 +55,7 @@ app.get('/api/providers',async c=>{
 app.get('/api/model',async c=>{
  const id=c.req.query('id');
  if(!id)return c.json({error:'Missing model id'},400);
- const model=await c.env.DB.prepare('SELECT id,name,description,context_length,updated_at FROM models WHERE id=?').bind(id).first();
+ const model=await c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,updated_at FROM models WHERE id=?').bind(id).first();
  if(!model)return c.json({error:'Model not found'},404);
  const endpoints=await c.env.DB.prepare(`SELECT id,provider,tag,source,input_price,output_price,status,checked_at
  FROM endpoints WHERE model_id=? ORDER BY provider,tag`).bind(id).all();
@@ -88,7 +88,7 @@ app.get('/api/subscriptions',requireAuth,async c=>{
 const subSchema=z.object({
  model_id:z.string().min(3).max(200),
  provider:z.string().trim().max(150).nullable().optional(),
- events:z.array(z.enum(EVENT_KINDS as [typeof EVENT_KINDS[number],...typeof EVENT_KINDS[number][]])).min(1).max(5),
+ events:z.array(z.enum(EVENT_KINDS as [typeof EVENT_KINDS[number],...typeof EVENT_KINDS[number][]])).min(1).max(EVENT_KINDS.length),
  threshold_pct:z.number().min(0).max(1000).default(0),
  frequency:z.enum(['instant','daily']).default('instant')
 });
