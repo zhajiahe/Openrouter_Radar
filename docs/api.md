@@ -6,11 +6,11 @@ All endpoints are mounted on one Hono Worker. Body parameters are JSON. Session 
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/health` | Current sync status; returns 503 until initial sync |
+| GET | `/api/health` | Catalogue and global Provider sweep status; returns 503 until initial sync or during degraded state |
 | GET | `/api/stats` | Public model/provider/subscription/event counts |
 | GET | `/api/models?q=...&page=1&limit=30` | Model search (limit max 100) |
 | GET | `/api/model?id=author/model` | Model details & endpoint snapshots |
-| GET | `/api/providers` | Seen provider list (after subscribed models are scanned) |
+| GET | `/api/providers` | Seen providers (all-model global scan, independent of subscriptions) |
 | GET | `/api/events?model_id=...` | Recent immutable events |
 | GET | `/feed.xml` | RSS |
 | POST | `/api/auth/register` | Registration; send verification email |
@@ -50,7 +50,7 @@ No endpoint accepts a user-supplied OpenRouter API key. Billing, metering, infer
 
 ## Event correctness
 
-- A newly encountered endpoint establishes a baseline. On later runs, genuine new providers may generate `endpoint.added`.
+- The global scanner establishes endpoint baselines even with zero subscriptions. Creating or deleting subscriptions never starts or stops collection. A newly encountered endpoint establishes a baseline. On later runs, genuine new providers may generate `endpoint.added`.
 - Two consecutive **successful and non-empty** provider snapshots must omit an endpoint before a removal event is emitted.
 - HTTP 403, 429, 500, invalid response and empty endpoint sets do **not** constitute endpoint removals.
 - Price changes are computed independently for input and output dimensions using decimal arithmetic.
@@ -64,3 +64,7 @@ All upstream requests require the instance's `OPENROUTER_API_KEY` secret, which 
 Additional event types are `price.policy_changed` (cache-related dimensions and `overrides` rule changes), `model.context_changed`, `model.capability_changed`, `model.alias_changed`, `model.expiration_changed`, and `model.expiring`. The last event fires once per model, expiration timestamp and 30/7/1-day warning window. Existing subscriptions remain unchanged; select the new event types explicitly.
 
 The event store reuses the existing `price_events` table for compatibility. When the event is non-numeric, `old_price` / `new_price` carry before/after values (including JSON for complex policy differences), so do not assume these fields always represent USD per token. Only `price.increased` and `price.decreased` use `change_pct` and subscription price thresholds.
+
+## Hourly global collection
+
+The Durable Object alarm wakes each minute. The full model catalogue refreshes once an hour, and **every** discovered model has a `collection_jobs` row. Providers are checked once their prior attempt is at least one hour old, in batches of 15 models per alarm by default (1–25 configurable by `MAX_MODELS_PER_TICK`). Subscriptions only match recorded changes and queue notifications; they never influence which models are collected. `/api/health` reports `provider_total`, `provider_scanned`, `provider_due`, `provider_errors` and interval fields. Hourly is a best-effort target, subject to model count, latency and quotas.
