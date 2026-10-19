@@ -102,3 +102,30 @@ jobs:
           echo "### OpenRouter Radar deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "URL: $ORIGIN" >> "$GITHUB_STEP_SUMMARY"
           echo "Health HTTP status: $code" >> "$GITHUB_STEP_SUMMARY"
+      - name: Smoke-test React homepage and static assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ORIGIN=$(node --input-type=module -e "import fs from 'node:fs'; const c=JSON.parse(fs.readFileSync('wrangler.deploy.json','utf8')); console.log(c.vars.APP_ORIGIN)")
+          echo "Checking public frontend at $ORIGIN/"
+          curl -fLsS --retry 2 --connect-timeout 10 --max-time 30 \
+            --header 'Accept: text/html' -o /tmp/radar-home.html "$ORIGIN/"
+          grep -qi '<title>OpenRouter Radar</title>' /tmp/radar-home.html || {
+            echo "::error::Homepage did not return the React HTML document"
+            head -c 300 /tmp/radar-home.html
+            exit 1
+          }
+          JS_PATH=$(grep -oE 'src="/assets/[^"]+\.js"' /tmp/radar-home.html | head -1 | cut -d '"' -f2)
+          CSS_PATH=$(grep -oE 'href="/assets/[^"]+\.css"' /tmp/radar-home.html | head -1 | cut -d '"' -f2)
+          if [[ -z "$JS_PATH" || -z "$CSS_PATH" ]]; then
+            echo "::error::Built React JS/CSS asset references are missing from homepage"
+            exit 1
+          fi
+          curl -fLsS --retry 2 --connect-timeout 10 --max-time 30 -o /tmp/radar-app.js "$ORIGIN$JS_PATH"
+          curl -fLsS --retry 2 --connect-timeout 10 --max-time 30 -o /tmp/radar-style.css "$ORIGIN$CSS_PATH"
+          test -s /tmp/radar-app.js
+          test -s /tmp/radar-style.css
+          echo "React homepage, JavaScript and stylesheet are publicly accessible"
+          echo "Frontend: $ORIGIN/" >> "$GITHUB_STEP_SUMMARY"
+          echo "Assets: JS and CSS fetched successfully" >> "$GITHUB_STEP_SUMMARY"
+
