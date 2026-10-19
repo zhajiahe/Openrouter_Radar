@@ -7,15 +7,15 @@
   "triggers": { "crons": ["*/15 * * * *"] },
   "d1_databases": [{
     "binding": "DB",
-    "database_name": "radar",
-    "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+    "database_name": "openrouter-radar",
+    "database_id": "1487e863-77b6-4c56-b448-52718ace08d7",
     "migrations_dir": "migrations"
   }],
   "assets": { "directory": "./web/dist", "binding": "ASSETS", "run_worker_first": true },
   "vars": {
-    "APP_ORIGIN": "http://localhost:8787",
+    "APP_ORIGIN": "https://openrouter-radar.zhajiahe1994.workers.dev",
     "MAIL_FROM": "Radar <notifications@example.com>",
-    "OPEN_SIGNUP": "true",
+    "OPEN_SIGNUP": "false",
     "MAX_MODELS_PER_TICK": "10"
   }
 }
