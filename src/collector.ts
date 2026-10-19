@@ -2,6 +2,7 @@ import {listModels,listEndpoints,type UpstreamModel,type UpstreamEndpoint} from 
 import {parsePrices,endpointId,findPriceChanges,thresholdMatches,type Prices} from './pricing';
 import {modelState,modelDeltas,expiryWindow,type ModelState} from './phase3';
 import {now,type Bindings,type EventKind} from './types';
+import {historyStatements,prunePriceHistory} from './history';
 
 type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number};
 type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string};
@@ -64,6 +65,7 @@ export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=list
    stmts.push(env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET input_price=excluded.input_price,output_price=excluded.output_price,pricing_json=excluded.pricing_json,status='active',missing_count=0,checked_at=excluded.checked_at")
     .bind(aggregate,m.id,MODEL_PROVIDER,'__model__','model',prices.prompt,prices.completion,JSON.stringify(raw),current,current));
    stmts.push(env.DB.prepare("INSERT OR IGNORE INTO collection_jobs(model_id) VALUES(?)").bind(m.id));
+   stmts.push(...historyStatements(env,aggregate,m.id,MODEL_PROVIDER,'model',prices,old?storedPrices(old.pricing_json):null,current));
    if(old){
     for(const delta of modelDeltas(old,state))
      stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,current));
@@ -82,7 +84,7 @@ export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=list
 }
 
 async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
- const subs=await env.DB.prepare("SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1").bind(record.model_id)
+ const subs=await env.DB.prepare("SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1 AND s.paused=0").bind(record.model_id)
   .all<{id:string;user_id:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string}>();
  const stmts:D1PreparedStatement[]=[];
  for(const sub of subs.results){
@@ -111,6 +113,7 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
    env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
     .bind(id,modelId,provider,tag,source,prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,ts)
   ];
+  stmts.push(...historyStatements(env,id,modelId,provider,source,prices,null,ts));
   if(allowAdded)stmts.push(event(env,id,modelId,provider,'endpoint.added',null,null,null,null,ts));
   await env.DB.batch(stmts);return;
  }
@@ -126,6 +129,7 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
  for(const delta of changes){
   stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts));
  }
+ stmts.push(...historyStatements(env,id,modelId,provider,source,prices,storedPrices(previous.pricing_json),ts));
  await env.DB.batch(stmts);
 }
 export async function collectModel(env:Bindings,modelId:string,fetcher:typeof listEndpoints=listEndpoints):Promise<void>{
@@ -156,7 +160,7 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
    if(count>=2)stmts.push(event(env,row.id,modelId,row.provider,'endpoint.removed',null,null,null,null,current));
    await env.DB.batch(stmts);
   }
-  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=NULL WHERE model_id=?').bind(current,modelId).run();
+  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,last_success=?,leased_until=0,last_error=NULL WHERE model_id=?').bind(current,current,modelId).run();
  }catch(e){
   await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=? WHERE model_id=?').bind(current,String(e).slice(0,200),modelId).run();
  }
@@ -188,4 +192,5 @@ export async function runCollection(env:Bindings):Promise<void>{
  await env.DB.prepare('DELETE FROM sessions WHERE expires_at<?').bind(now()).run();
  await env.DB.prepare('DELETE FROM email_tokens WHERE expires_at<?').bind(now()).run();
  await env.DB.prepare('DELETE FROM rate_limits WHERE reset_at<?').bind(now()).run();
+ await prunePriceHistory(env);
 }
