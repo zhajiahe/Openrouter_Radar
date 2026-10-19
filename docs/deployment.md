@@ -14,7 +14,7 @@
 ```bash
 npm install
 npx wrangler login
-npx wrangler d1 create radar
+npx wrangler d1 create openrouter-radar
 ```
 
 编辑 `wrangler.jsonc` 里 `database_id`，使用创建数据库命令返回的真实 UUID。不要保留 `REPLACE_WITH_YOUR_D1_DATABASE_ID`。
@@ -39,11 +39,11 @@ npx wrangler secret put RESEND_API_KEY
 ## 3. 迁移并部署
 
 ```bash
-npx wrangler d1 migrations apply radar --remote
+npx wrangler d1 migrations apply DB --remote
 npm run deploy
 ```
 
-应用从首次 Cron 后同步模型目录，后续约每 6 小时一次。用户能搜索模型后即可注册并订阅。*自定义域名与 DNS 配置在 Cloudflare Dashboard 中完成*。
+应用从第一次访问（例如 /api/health）启动 Durable Object Alarm 后同步模型目录，后续约每 6 小时一次。用户能搜索模型后即可注册并订阅。*自定义域名与 DNS 配置在 Cloudflare Dashboard 中完成*。
 
 ## 4. 运行状况
 
@@ -51,7 +51,7 @@ npm run deploy
 - `GET /api/stats`：全站公开统计。
 - `GET /api/events`：公开价格事件。
 - `GET /feed.xml`：RSS。
-- Cloudflare Workers 日志用于查看 Cron 或 Resend 错误；不应输出用户密码或认证 Token。
+- Cloudflare Workers 日志用于查看 Durable Object Alarm 或 Resend 错误；不应输出用户密码或认证 Token。
 
 > 注意：Workers Free 有 CPU、请求和 D1 行读写限制。公共实例按关注模型数量而非注册用户数量进行采集；达到上游限制时不会删除已有价格，也不会报错成“端点下线”。提升并发前请核实 Cloudflare 当前配额。
 
@@ -59,12 +59,12 @@ npm run deploy
 
 ```bash
 npm install
-npx wrangler d1 migrations apply radar --local
+npx wrangler d1 migrations apply DB --local
 npm run build
 npm run dev
 ```
 
-`wrangler dev` 使用本地 D1；若要实际测试注册，请使用 `.dev.vars` 提供本地测试发信凭证，或部署测试域名。永远不要上传 `.dev.vars`。本地可用 `wrangler dev --test-scheduled` 调用模拟 Cron，查看目录是否同步。
+`wrangler dev` 使用本地 D1；若要实际测试注册，请使用 `.dev.vars` 提供本地测试发信凭证，或部署测试域名。永远不要上传 `.dev.vars`。本地可用 `访问 /api/health 以初始化 Durable Object Alarm（不需要 --test-scheduled）` 触发调度器，查看目录是否同步。
 
 ## 个人与公开实例的区别
 

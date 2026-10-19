@@ -4,7 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
-  "triggers": { "crons": ["*/15 * * * *"] },
+  "durable_objects": { "bindings": [{ "name": "SCHEDULER", "class_name": "RadarScheduler" }] },
+  "migrations": [{ "tag": "radar-scheduler-v1", "new_sqlite_classes": ["RadarScheduler"] }],
   "d1_databases": [{
     "binding": "DB",
     "database_name": "openrouter-radar",
