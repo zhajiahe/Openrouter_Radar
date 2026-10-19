@@ -53,7 +53,7 @@ function App(){
  const [threshold,setThreshold]=useState(0);
  const [frequency,setFrequency]=useState('instant');
  const [kinds,setKinds]=useState<string[]>(['price.decreased','price.increased','endpoint.added','endpoint.removed','endpoint.restored']);
- const [status,setStatus]=useState<{status:string;catalog_last_success:number|null}>({status:'degraded',catalog_last_success:null});
+ const [status,setStatus]=useState<{status:string;catalog_last_success:number|null;provider_total?:number;provider_scanned?:number;provider_due?:number;provider_errors?:number}>({status:'degraded',catalog_last_success:null});
 
  async function loadPublic(){
   const results=await Promise.allSettled([api<typeof stats>('/stats'),api<{data:Event[]}>('/events?limit=40'),api<typeof status>('/health')]);
@@ -107,7 +107,7 @@ function App(){
   setBusy(true);setError('');
   try{
    await api('/subscriptions',{method:'POST',body:JSON.stringify({model_id:selected.id,provider:watchProvider||null,events:kinds,threshold_pct:Number(threshold),frequency})});
-   setMessage('订阅创建成功，后续采集将自动通知变价事件。');await loadPrivate();setView('watches');
+   setMessage('订阅创建成功，后续符合条件的变化将通知你。');await loadPrivate();setView('watches');
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}
  }
  async function removeWatch(id:string){
@@ -122,32 +122,67 @@ function App(){
  async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);setView('overview');}
  const unread=notices.filter(n=>!n.read_at).length;
  const titles:Record<string,string>={overview:'市场总览',catalog:'模型目录',events:'价格动态',watches:'我的订阅',notices:'通知中心',account:'账号'};
+ const scanned=status.provider_scanned??0;
+ const total=status.provider_total??stats.models;
+ const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
  return <div className="layout">
   <aside className="sidebar">
-   <div className="brand"><span className="brand-icon">◎</span><span>OR <b>Radar</b></span></div>
-   <div className="side-caption">MARKET INTELLIGENCE</div>
-   <nav aria-label="主要导航">{[['overview','◫','市场总览'],['catalog','▦','模型目录'],['events','↗','价格动态'],['watches','◉','我的订阅'],['notices','♧','通知中心']] .map(([id,ico,name])=>
+   <div className="brand"><span className="brand-icon" aria-hidden="true">◉</span><span>openrouter <b>radar.</b></span></div>
+   <div className="side-caption">WORKSPACE / 数据中心</div>
+   <nav aria-label="主要导航">{[['overview','◈','市场总览'],['catalog','▤','模型目录'],['events','↗','价格动态'],['watches','◎','我的订阅'],['notices','◌','通知中心']] .map(([id,ico,name])=>
     <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setSelected(null);setError('');}}>
      <span className="nav-icon">{ico}</span>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
     </button>)}</nav>
-   <div className="side-footer"><span className="online-dot"/> Powered by Cloudflare Workers <a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">GitHub ↗</a></div>
+   <div className="side-footer"><span className="sidebar-status"><span className="online-dot"/> OPEN SOURCE RADAR</span><p>不需要个人 API Key。<br/>持续收集，按需订阅。</p><a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">在 GitHub 查看项目 ↗</a></div>
   </aside>
   <main className="main">
-   <header className="topbar"><div className="breadcrumb"><span>OpenRouter Radar</span><span className="muted">/</span><b>{titles[view]}</b></div>
-    <button className="account-button" onClick={()=>setView('account')}>{user?user.email:'注册 / 登录'}</button>
+   <header className="topbar">
+    <div className="breadcrumb"><span>工作台</span><span className="breadcrumb-separator">/</span><b>{titles[view]}</b></div>
+    <div className="topbar-actions">
+     <span className={'live-indicator '+(status.status==='ok'?'':'muted-status')} role="status"><span className="online-dot"/>{status.status==='ok'?'同步正常':'同步状态待确认'}</span>
+     <button className="account-button" onClick={()=>setView('account')}>{user?user.email:'登录 / 注册'} <span aria-hidden="true">↗</span></button>
+    </div>
    </header>
    <div className="content">
     {error&&<div className="toast error" role="alert">{error}<button type="button" aria-label="关闭错误提示" onClick={()=>setError('')}>×</button></div>}
     {message&&<div className="toast success" role="status">{message}<button type="button" aria-label="关闭成功提示" onClick={()=>setMessage('')}>×</button></div>}
     {view==='overview'&&<>
-     <div className="hero"><div className="eyebrow">YOUR MODEL MARKET WATCHTOWER</div><h1>洞察每一次模型价格变化<span className="accent">.</span></h1><p>追踪 OpenRouter 模型与 Provider 端点价格，订阅变化，收到邮件和站内通知。无需用户 API Key。</p><button className="primary" onClick={()=>setView('catalog')}>开始监控 <span>→</span></button></div>
-     <div className="metrics">
-      {[[stats.models,'模型总数','▦'],[stats.providers,'已采集 Provider','◈'],[stats.subscriptions,'全站订阅','◉'],[stats.events24h,'24小时事件','↗']].map(([value,labelText,icon])=>
-       <div className="metric" key={String(labelText)}><div className="metric-label"><span>{icon}</span>{labelText}</div><strong>{Number(value).toLocaleString()}</strong></div>)}
+     <div className="hero">
+      <div className="hero-copy">
+       <div className="eyebrow">OPENROUTER / MARKET INTELLIGENCE</div>
+       <h1>模型市场动态，<br/><span className="accent">尽在掌握。</span></h1>
+       <p>持续追踪模型定价、Provider 与能力变化。每小时全量采集，重要变化只在你订阅后通知你。</p>
+       <div className="hero-actions">
+        <button className="primary" onClick={()=>setView('catalog')}>探索模型目录 <span aria-hidden="true">↗</span></button>
+        <span className="hero-secondary">公开数据 · 无需用户 API Key</span>
+       </div>
+      </div>
+      <div className="radar-visual" aria-hidden="true">
+       <i className="radar-ring"/><i className="radar-ring"/><i className="radar-ring"/>
+       <i className="radar-sweep"/><i className="radar-ping one"/><i className="radar-ping two"/><i className="radar-ping three"/>
+       <span className="radar-core">◉</span>
+       <span className="hero-radar-label">SIGNAL DETECTION · ACTIVE</span>
+      </div>
      </div>
-     <div className="section-head"><h2>最近价格动态</h2><button className="text-action" onClick={()=>setView('events')}>查看全部 →</button></div>
-     <EventsTable data={events.slice(0,8)}/>
-     <div className="hint" role="status">数据状态：<span className={status.status==='ok'?'good':'warning'}>{status.status==='ok'?'运行正常':'等待首次同步 / 数据过期'}</span> · 最近目录同步 {status.catalog_last_success?time(status.catalog_last_success):'尚未执行'}</div>
+     <div className="metrics">
+      {[[stats.models,'模型总数','▦','目录内的公开模型'],[stats.providers,'活跃 Provider','◇','已发现的服务商'],[stats.subscriptions,'全站订阅','◎','用户设置的提醒规则'],[stats.events24h,'24小时事件','↗','过去一天的真实变化']].map(([value,labelText,icon,note])=>
+       <div className="metric" key={String(labelText)}><div className="metric-label"><span aria-hidden="true">{icon}</span>{labelText}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
+     </div>
+     <div className="section-head"><div><h2>市场最近变化</h2><p className="section-heading-sub">仅展示实际发现的变化，不生成模拟数据</p></div><button className="text-action" onClick={()=>setView('events')}>全部事件 ↗</button></div>
+     <div className="overview-grid">
+      <EventsTable data={events.slice(0,8)}/>
+      <div className="panel scanner-panel">
+       <div className="scanner-head"><strong>全量采集进度</strong><span className="scanner-icon" aria-hidden="true">◎</span></div>
+       <div className="scanner-stat"><strong>{scanned.toLocaleString()}</strong><span>/ {total.toLocaleString()} 个模型</span></div>
+       <div className="scanner-track" role="progressbar" aria-label="Provider 已扫描模型比例" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div className="scanner-bar" style={{width:progress+'%'}}/></div>
+       <div className="scanner-meta"><span>Provider 快照覆盖</span><strong>{progress}%</strong></div>
+       <div className="scanner-divider"/>
+       <div className="scanner-row"><span>目录同步状态</span><strong className={status.status==='ok'?'good':'warning'}>{status.status==='ok'?'正常':'待确认'}</strong></div>
+       <div className="scanner-row"><span>等待扫描</span><strong>{(status.provider_due??0).toLocaleString()} 个</strong></div>
+       <div className="scanner-row"><span>上次目录同步</span><strong>{status.catalog_last_success?time(status.catalog_last_success):'暂无'}</strong></div>
+       <p className="scanner-footnote">每小时全量同步，按批次抓取 Provider。订阅只影响提醒，不影响采集。</p>
+      </div>
+     </div>
     </>}
     {view==='catalog'&&<>
      <div className="page-heading"><div><div className="eyebrow">MODEL CATALOG</div><h1>模型目录</h1><p>选择模型，查看不同 Provider 的当前报价，并创建通知订阅。</p></div></div>
@@ -155,26 +190,26 @@ function App(){
      <div className="catalog-grid">
       <div className="panel models-panel">
        <div className="panel-title">模型 <span className="muted">({models.length} / 页)</span></div>
-       <div className="model-list">{models.map(m=><button key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')} onClick={()=>void inspect(m)}>
-        <strong>{m.name}</strong><small>{m.id}</small></button>)}
-       {!models.length&&<div className="empty">还没有模型数据。首次部署后等待 Cron 完成目录同步。</div>}</div>
+       <div className="model-list">{models.map(m=><button key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')} aria-pressed={selected?.id===m.id} onClick={()=>void inspect(m)}>
+        <span className="model-avatar" aria-hidden="true">{m.id.split('/')[0].slice(0,2).toUpperCase()}</span><span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small></span><span className="model-chevron" aria-hidden="true">›</span></button>)}
+       {!models.length&&<div className="empty">暂无匹配的模型。请尝试其他关键词，或等待下次目录同步。</div>}</div>
        <div className="pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← 上一页</button><span>第 {page} 页</span><button disabled={models.length<30} onClick={()=>setPage(p=>p+1)}>下一页 →</button></div>
       </div>
       <div className="panel detail-panel">{selected?<>
-       <div className="panel-title"><span>模型详情</span><span className="light-tag">实时采集快照</span></div>
+       <div className="panel-title"><span>模型详情</span><span className="light-tag">最近一次采集快照</span></div>
        <h2>{selected.name}</h2><code className="code-id">{selected.id}</code>
        <p className="muted">上下文 {selected.context_length?.toLocaleString()||'未知'} tokens{selected.alias_target?' · 别名指向 '+selected.alias_target:''}{selected.expiration_date?' · 到期 '+new Date(selected.expiration_date*1000).toLocaleDateString():''}</p>
        <h3>Provider Endpoint</h3>
        <div className="scroll-x"><table><thead><tr><th>Provider</th><th>输入 $/M</th><th>输出 $/M</th><th>采集时间</th></tr></thead><tbody>
         {endpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.tag}</small></td><td>{endpointPrice(ep.input_price)}</td><td>{endpointPrice(ep.output_price)}</td><td><small>{time(ep.checked_at)}</small></td></tr>)}
-       </tbody></table>{!endpoints.length&&<div className="empty">还没有端点快照。创建订阅后下一次采集将更新。</div>}</div>
+       </tbody></table>{!endpoints.length&&<div className="empty">该模型的 Provider 数据仍在全量采集队列中，稍后会自动更新。</div>}</div>
        <div className="subscribe-box"><h3>创建监控订阅</h3><label>Provider 范围</label>
         <select value={watchProvider} onChange={e=>setWatchProvider(e.target.value)}><option value="">所有 Provider</option>{[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=><option key={p} value={p}>{p}</option>)}</select>
         <label>提醒事件</label><div className="checks">{EVENTS.map(([id,text])=><label key={id}><input type="checkbox" checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.target.checked?[...a,id]:a.filter(k=>k!==id))}/>{text}</label>)}</div>
         <label>价格变化阈值（%）</label><input type="number" min="0" max="1000" value={threshold} onChange={e=>setThreshold(Number(e.target.value))}/>
         <label>通知节奏</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="instant">变化后尽快发送</option><option value="daily">每日 08:00 UTC 汇总</option></select>
         <button className="primary full" disabled={busy} onClick={()=>void addWatch()}>{user?'创建订阅':'登录后创建订阅'} →</button>
-        <small className="muted">首次抓取建立基准，不将初始价格误报为降价。</small>
+        <small className="muted">全量采集持续运行；订阅只负责筛选后续变化并通知，不影响采集频率。</small>
        </div>
       </>:<div className="selection-empty"><span>◎</span><h3>选中一个模型</h3><p>查看报价、端点及监控选项</p></div>}</div>
      </div>
@@ -210,7 +245,7 @@ function App(){
 }
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><button className="primary" onClick={onLogin}>注册 / 登录 →</button></div>}
 function EventsTable({data}:{data:Event[]}){
- return <div className="panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
+ return <div className="panel table-panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
  {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td><span>{formatEvent(e)}</span></td><td><small>{time(e.created_at)}</small></td></tr>)}
  </tbody></table>{!data.length&&<div className="empty roomy">还没有价格变化事件。完成首次采集后，系统只记录后续真实变化。</div>}</div></div>;
 }
