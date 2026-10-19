@@ -58,7 +58,8 @@ CREATE TABLE price_events (
  old_price TEXT,
  new_price TEXT,
  change_pct REAL,
- created_at INTEGER NOT NULL
+ created_at INTEGER NOT NULL,
+ matched_at INTEGER
 );
 CREATE INDEX idx_events_model_time ON price_events(model_id,created_at DESC);
 CREATE INDEX idx_events_created ON price_events(created_at DESC);

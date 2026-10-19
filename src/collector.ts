@@ -30,23 +30,39 @@ export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=list
   throw e;
  }
 }
+type EventRow={id:string;model_id:string;provider:string;kind:EventKind;dimension:string|null;change_pct:number|null;created_at:number};
+async function matchEvent(env:Bindings,event:EventRow):Promise<void>{
+ const subscriptions=await env.DB.prepare(`SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency
+ FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1`)
+ .bind(event.model_id).all<{id:string;user_id:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string}>();
+ const statements:D1PreparedStatement[]=[];
+ for(const sub of subscriptions.results){
+  if(sub.provider!==null&&sub.provider!==event.provider)continue;
+  let selected:string[];try{selected=JSON.parse(sub.events_json)}catch{continue;}
+  if(!selected.includes(event.kind))continue;
+  if(event.dimension&&!thresholdMatches(event.change_pct,sub.threshold_pct))continue;
+  // Send daily summaries at the first 08:00 UTC after an event.
+  const scheduled=sub.frequency==='daily' ? Math.ceil((event.created_at-8*3600)/86400)*86400+8*3600 : now();
+  statements.push(env.DB.prepare(`INSERT OR IGNORE INTO notifications
+   (id,user_id,event_id,subscription_id,next_attempt_at,created_at) VALUES(?,?,?,?,?,?)`)
+   .bind(crypto.randomUUID(),sub.user_id,event.id,sub.id,scheduled,event.created_at));
+ }
+ statements.push(env.DB.prepare('UPDATE price_events SET matched_at=? WHERE id=? AND matched_at IS NULL').bind(now(),event.id));
+ // D1 batch rolls back all writes if any insert or the watermark update fails.
+ await env.DB.batch(statements);
+}
+export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<number>{
+ const events=await env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,change_pct,created_at
+ FROM price_events WHERE matched_at IS NULL ORDER BY created_at ASC LIMIT ?`).bind(limit).all<EventRow>();
+ for(const event of events.results)await matchEvent(env,event);
+ return events.results.length;
+}
 async function emit(env:Bindings,endpointIdValue:string,modelId:string,provider:string,kind:EventKind,dimension:string|null,oldValue:string|null,newValue:string|null,pct:number|null):Promise<void>{
  const eventId=crypto.randomUUID(),ts=now();
  await env.DB.prepare(`INSERT INTO price_events(id,endpoint_id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at)
  VALUES(?,?,?,?,?,?,?,?,?,?)`).bind(eventId,endpointIdValue,modelId,provider,kind,dimension,oldValue,newValue,pct,ts).run();
- const subscriptions=await env.DB.prepare(`SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency
- FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1`).bind(modelId).all<{
- id:string;user_id:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string
- }>();
- for(const sub of subscriptions.results){
-  if(sub.provider!==null && sub.provider!==provider)continue;
-  let selected:string[]=[];try{selected=JSON.parse(sub.events_json)}catch{continue}
-  if(!selected.includes(kind))continue;
-  if(dimension && !thresholdMatches(pct,sub.threshold_pct))continue;
-  const scheduled= sub.frequency==='daily' ? Math.ceil((ts-8*3600)/86400)*86400+8*3600 : ts;
-  await env.DB.prepare(`INSERT OR IGNORE INTO notifications(id,user_id,event_id,subscription_id,next_attempt_at,created_at)
-   VALUES(?,?,?,?,?,?)`).bind(crypto.randomUUID(),sub.user_id,eventId,sub.id,scheduled,ts).run();
- }
+ // If rule matching fails, this event remains unmatched and is replayed next Cron.
+ await matchEvent(env,{id:eventId,model_id:modelId,provider,kind,dimension,change_pct:pct,created_at:ts});
 }
 export async function applySnapshot(env:Bindings,observation:Observed,allowAdded=false):Promise<void>{
  const {modelId,provider,tag,source,variant,prices}=observation;
@@ -117,6 +133,7 @@ export async function runCollection(env:Bindings):Promise<void>{
  GROUP BY j.model_id ORDER BY j.last_checked ASC LIMIT ?`)
  .bind(now(),now()-3600,count).all<{model_id:string}>();
  for(const job of jobs.results)await collectModel(env,job.model_id);
+ await matchUnmatchedEvents(env);
  await env.DB.prepare('DELETE FROM sessions WHERE expires_at<?').bind(now()).run();
  await env.DB.prepare('DELETE FROM email_tokens WHERE expires_at<?').bind(now()).run();
  await env.DB.prepare('DELETE FROM rate_limits WHERE reset_at<?').bind(now()).run();
