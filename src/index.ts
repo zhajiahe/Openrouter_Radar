@@ -3,6 +3,8 @@ import { secureHeaders } from 'hono/secure-headers';
 import { z } from 'zod';
 import auth, { requireAuth } from './auth';
 import { EVENT_KINDS, now, type AppEnv, type Bindings } from './types';
+import { CATALOG_INTERVAL_SECONDS, PROVIDER_INTERVAL_SECONDS } from './collector';
+import { ALARM_INTERVAL_MS } from './scheduler';
 export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
@@ -24,8 +26,11 @@ app.get('/api/health',async c=>{
  c.executionCtx.waitUntil(c.env.SCHEDULER.get(c.env.SCHEDULER.idFromName('global')).fetch('https://internal.scheduler/arm').catch(e=>console.error('scheduler bootstrap failed',e)));
  const sync=await c.env.DB.prepare("SELECT last_success,last_error FROM sync_state WHERE name='catalog'").first<{last_success:number;last_error:string|null}>();
  const total=await c.env.DB.prepare('SELECT count(*) as count FROM models').first<{count:number}>();
- const healthy=!!c.env.OPENROUTER_API_KEY&&!!sync?.last_success&&now()-sync.last_success<86400;
- return c.json({status:healthy?'ok':'degraded',models:total?.count||0,catalog_last_success:sync?.last_success||null,catalog_error:sync?.last_error||null,provider_monitoring:'subscriber_models',server_time:now()},healthy?200:503);
+ const coverage=await c.env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN last_checked>0 THEN 1 ELSE 0 END) AS scanned, SUM(CASE WHEN last_checked<? THEN 1 ELSE 0 END) AS due, SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS errors FROM collection_jobs')
+  .bind(now()-PROVIDER_INTERVAL_SECONDS).first<{total:number;scanned:number|null;due:number|null;errors:number|null}>();
+ const healthy=!!c.env.OPENROUTER_API_KEY&&!!sync?.last_success&&!sync?.last_error&&now()-sync.last_success<2*CATALOG_INTERVAL_SECONDS
+  &&(coverage?.total===0 || (coverage?.scanned||0)>0);
+ return c.json({status:healthy?'ok':'degraded',models:total?.count||0,catalog_last_success:sync?.last_success||null,catalog_error:sync?.last_error||null,provider_monitoring:'all_models',provider_total:coverage?.total||0,provider_scanned:coverage?.scanned||0,provider_due:coverage?.due||0,provider_errors:coverage?.errors||0,catalog_interval_seconds:CATALOG_INTERVAL_SECONDS,provider_interval_seconds:PROVIDER_INTERVAL_SECONDS,scheduler_interval_seconds:ALARM_INTERVAL_MS/1000,server_time:now()},healthy?200:503);
 });
 app.get('/api/stats',async c=>{
  const [models,providers,subscriptions,events]=await Promise.all([
@@ -57,8 +62,11 @@ app.get('/api/model',async c=>{
  if(!id)return c.json({error:'Missing model id'},400);
  const model=await c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,updated_at FROM models WHERE id=?').bind(id).first();
  if(!model)return c.json({error:'Model not found'},404);
- const endpoints=await c.env.DB.prepare(`SELECT id,provider,tag,source,input_price,output_price,status,checked_at
- FROM endpoints WHERE model_id=? ORDER BY provider,tag`).bind(id).all();
+ const endpoints=await c.env.DB.prepare(`SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.status,
+ CASE WHEN e.source='provider' AND j.last_error IS NULL AND j.last_checked>0
+  THEN j.last_checked ELSE e.checked_at END AS checked_at
+ FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id
+ WHERE e.model_id=? ORDER BY e.provider,e.tag`).bind(id).all();
  return c.json({model,endpoints:endpoints.results});
 });
 app.get('/api/events',async c=>{
@@ -100,11 +108,8 @@ app.post('/api/subscriptions',requireAuth,async c=>{
  const model=await c.env.DB.prepare('SELECT id FROM models WHERE id=?').bind(parsed.data.model_id).first();
  if(!model)return c.json({error:'Unknown model; wait for initial catalogue sync'},404);
  const id=crypto.randomUUID();
- await c.env.DB.batch([
-  c.env.DB.prepare(`INSERT INTO subscriptions(id,user_id,model_id,provider,events_json,threshold_pct,frequency,created_at)
-   VALUES(?,?,?,?,?,?,?,?)`).bind(id,c.get('userId'),parsed.data.model_id,parsed.data.provider||null,JSON.stringify(parsed.data.events),parsed.data.threshold_pct,parsed.data.frequency,now()),
-  c.env.DB.prepare('INSERT OR IGNORE INTO collection_jobs(model_id) VALUES(?)').bind(parsed.data.model_id)
- ]);
+ await c.env.DB.prepare(`INSERT INTO subscriptions(id,user_id,model_id,provider,events_json,threshold_pct,frequency,created_at)
+   VALUES(?,?,?,?,?,?,?,?)`).bind(id,c.get('userId'),parsed.data.model_id,parsed.data.provider||null,JSON.stringify(parsed.data.events),parsed.data.threshold_pct,parsed.data.frequency,now()).run();
  return c.json({id},201);
 });
 app.delete('/api/subscriptions/:id',requireAuth,async c=>{

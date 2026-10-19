@@ -13,12 +13,12 @@
 ## 功能
 
 - **Phase 0 / 上游协议**：通过部署者密钥读取 `/api/v1/models` 与 `/api/v1/models/{author}/{slug}/endpoints` 接口；Zod 校验上游响应；保留原始计费字段；Decimal 精确对比输入、输出 Token 报价。
-- **Phase 1 / 基础监控**：定时同步模型目录；只对被订阅的模型采集 Provider Endpoint；首次采集建立基准；记录涨跌、Provider 新增、端点消失（连续两次成功响应确认）及恢复事件；公开历史动态与 RSS。
+- **Phase 1 / 基础监控**：定时同步模型目录；对所有模型采集 Provider Endpoint，不依赖订阅；首次采集建立基准；记录涨跌、Provider 新增、端点消失（连续两次成功响应确认）及恢复事件；公开历史动态与 RSS。
 - **Phase 3 / 个人实例**：部署者 API Key、缓存和多维定价策略差异、模型能力及别名变化、30/7/1 天到期提醒、GitHub Actions 自动部署。
 - **Phase 2 / 公开订阅**：邮箱+密码注册、验证邮箱、登录、重置密码、个人订阅规则、可选 Provider 过滤、变化百分比阈值、即时邮件 / 每日摘要、站内通知、邮件重试、用户隔离及简单反滥用限额。
-- **部署与运维**：单 Worker + D1，15 分钟 Durable Object Alarm；Hono API；仪表板、健康检查、CI 与开源部署说明。
+- **部署与运维**：单 Worker + D1，1 分钟 Durable Object Alarm；Hono API；仪表板、健康检查、CI 与开源部署说明。
 
-全站用户共享一套上游数据采集。**任意用户都不需要在 Web UI 填写任何 Key**；运营者在 Cloudflare Secrets 中配置自己的 OpenRouter API Key 和邮件发送凭证。
+全量模型和 Provider 数据独立于订阅持续采集、生成历史变更事件；订阅只负责筛选事件和发送站内/邮件通知。全站用户共享一套上游数据采集。**任意用户都不需要在 Web UI 填写任何 Key**；运营者在 Cloudflare Secrets 中配置自己的 OpenRouter API Key 和邮件发送凭证。
 
 **实例说明：** 当前公开站点可查看模型目录与历史事件；账号注册及邮件提醒取决于部署者是否启用邮件服务与开放注册。网站是自部署实例，非 OpenRouter 官方服务。
 
@@ -53,7 +53,7 @@ npm run dev
 
 ## 使用范围与已知限制
 
-- **不是毫秒级实时行情**：Durable Object Alarm 每 15 分钟触发，已订阅模型默认至少每小时抓取一次；目录每 6 小时同步一次。界面显示采集时间，数据源可能暂时过期。
+- **不是毫秒级实时行情**：Durable Object Alarm 每分钟唤醒、每批默认扫描 15 个模型；全量目录每小时同步，所有模型 Provider Endpoint 按上次采集时间进入每小时滚动采集队列（实际完成时间受模型规模、速率限制和上游可用性影响）。订阅仅负责筛选与通知，不影响采集。界面显示采集时间，数据源可能暂时过期。
 - **首次采集不产生价格变更事件**：所有历史始于部署后的首次采集。上游模型价可能包含限时动态 `overrides`；Phase 3 会对比完整的定价规则；已有优惠时段的开始或结束不是定价政策变更。
 - **不支持基于用户实际调用量的计费分析**。
 - **仅监控模型/Provider 元数据**，不代理推理请求、不存储用户聊天。
@@ -64,8 +64,8 @@ npm run dev
 ## 架构
 
 ```text
-OpenRouter API (instance owner key) -> 15m DO alarm -> model catalogue (6h)
-                              |-> subscribed models -> endpoint snapshots
+OpenRouter API (instance owner key) -> 1m DO alarm -> model catalogue (1h)
+                              |-> all models (batched) -> endpoint snapshots
                               |-> decimal price diff -> immutable events
                               |-> subscription rules -> notifications -> Resend
 React UI -> Hono routes -> D1 (auth + models + endpoints + rules + events)

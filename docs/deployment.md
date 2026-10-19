@@ -27,7 +27,7 @@ npx wrangler d1 create openrouter-radar
 - `APP_ORIGIN`：`https://radar.example.com`（必须和生产域名一致，验证与重置邮件都使用它）。
 - `MAIL_FROM`：Resend 已验证域名的发信身份，例如 `Radar <radar@example.com>`。
 - `OPEN_SIGNUP`：默认 `true`，公开注册。如不希望开放则设为 `false`。
-- `MAX_MODELS_PER_TICK`：单次定时执行的最大订阅模型处理数量，1–25，默认 10。
+- `MAX_MODELS_PER_TICK`：单次定时执行的全量 Provider 模型批次，1–25，默认 15；不随订阅数量变化。
 
 机密配置（千万不要放在 `vars` 或提交仓库）：
 
@@ -45,7 +45,7 @@ npx wrangler d1 migrations apply DB --remote
 npm run deploy
 ```
 
-应用从第一次访问（例如 /api/health）启动 Durable Object Alarm 后同步模型目录，后续约每 6 小时一次。用户能搜索模型后即可注册并订阅。*自定义域名与 DNS 配置在 Cloudflare Dashboard 中完成*。
+应用从第一次访问（例如 /api/health）启动 Durable Object Alarm 后同步模型目录，后续每小时同步一次目录，Provider 全量滚动扫描。用户能搜索模型后即可注册并订阅。*自定义域名与 DNS 配置在 Cloudflare Dashboard 中完成*。
 
 ## 4. 运行状况
 
@@ -55,7 +55,7 @@ npm run deploy
 - `GET /feed.xml`：RSS。
 - Cloudflare Workers 日志用于查看 Durable Object Alarm 或 Resend 错误；不应输出用户密码或认证 Token。
 
-> 注意：Workers Free 有 CPU、请求和 D1 行读写限制。公共实例按关注模型数量而非注册用户数量进行采集；达到上游限制时不会删除已有价格，也不会报错成“端点下线”。提升并发前请核实 Cloudflare 当前配额。
+> 注意：Workers Free 有 CPU、请求和 D1 行读写限制。全量扫描的上游 API 调用量约为每小时模型数 + 1，与订阅用户数无关。默认每分钟最多 15 个 Provider 请求，理论扫描容量约 900 模型/小时；模型更多、响应慢或限流时会出现扫描延迟。Cloudflare 免费计划每次调用最多 50 个外部子请求；达到上游限制时不会删除已有价格，也不会报错成“端点下线”。提升并发前请核实 Cloudflare 当前配额。
 
 ## 本地运行
 
@@ -74,7 +74,7 @@ npm run dev
 
 ## 自动化部署
 
-本仓库默认使用已连接的 Cloudflare Builds 在 `main` 更新后部署。GitHub Actions 的 CI 检查始终运行；如希望迁移为由 GitHub Actions 部署，请先停用 Cloudflare Builds 自动部署、补齐 Cloudflare GitHub Secrets，然后设置 `DEPLOY_VIA_GITHUB_ACTIONS=true`。两条生产部署通道不应同时启用。详细步骤参见 [GitHub Actions 自部署文档](github-actions-deployment.md)。
+本仓库通过 GitHub Actions 在 `main` 更新后自动部署并执行 D1 迁移。Cloudflare Builds 已断开，避免双重生产发布。详细步骤参见 [GitHub Actions 自部署文档](github-actions-deployment.md)。
 
 ## 许可边界
 
@@ -88,8 +88,8 @@ npm run dev
 
 - 实例 URL：`https://openrouter-radar.zhajiahe1994.workers.dev`
 - D1 名称：`openrouter-radar`；数据库已创建且已执行 `0001_initial.sql`
-- 调度：`RadarScheduler` Durable Object Alarm，每 15 分钟；不占用 Workers Free 的 Cron Trigger 名额
-- Cloudflare Builds 已连接 GitHub `main`，合并或推送后自动构建部署
+- 调度：`RadarScheduler` Durable Object Alarm，每 1 分钟；不占用 Workers Free 的 Cron Trigger 名额
+- GitHub Actions 已接管 `main` 的自动部署；Cloudflare Builds 不再触发部署
 - **目前 `OPEN_SIGNUP=false`**：还未配置实例邮件服务，防止用户注册后无法验证邮箱；不应声称公开注册已可用
 
 ### 启用真正的公开注册邮件
@@ -99,7 +99,7 @@ npm run dev
 1. 在 Resend 验证你实际拥有的发信域名。
 2. 在 Cloudflare Worker 的 Secrets 中添加 `RESEND_API_KEY`（不要放到 GitHub 或公开配置里）。
 3. 将 `wrangler.jsonc` 中的 `MAIL_FROM` 改为已验证的地址。
-4. 将 `OPEN_SIGNUP` 设置为 `true`，提交到 `main`，等待 Cloudflare Builds 成功。
+4. 将 `OPEN_SIGNUP` 设置为 `true`，提交到 `main`，等待 GitHub Actions 部署成功。
 5. 用自己的邮箱执行注册、验证、登录、订阅并确认收到测试告警后，再对外公开推广。
 
 公开实例建议启用 Turnstile/WAF、防滥用额度及发信上限。普通订阅者始终无需任何 OpenRouter API Key。

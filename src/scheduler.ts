@@ -7,18 +7,21 @@ import { deliverPending } from './delivery';
  * Single periodic scanner without account-level Cron Triggers.
  * Durable Object alarms are persisted and automatically wake the object.
  */
+export const ALARM_INTERVAL_MS=60_000;
+
 export class RadarScheduler extends DurableObject<Bindings> {
  async fetch(_request: Request): Promise<Response> {
   const current=Date.now();
   const next=await this.ctx.storage.getAlarm();
-  if(next===null) {
+  // Move old 15-minute alarms forward after upgrading the scanner.
+  if(next===null || next>current+ALARM_INTERVAL_MS) {
    await this.ctx.storage.setAlarm(current+1_000);
-   return Response.json({armed:true,reason:'initial'});
+   return Response.json({armed:true,reason:next===null?'initial':'cadence_updated'});
   }
   // After a failed first catalogue sync, retry early but never more than once
-  // per 15 minutes, even if public health checks are frequently requested.
+  // per minute, even if public health checks are frequently requested.
   const lastRetry=await this.ctx.storage.get<number>('bootstrapRetryAt')??0;
-  if(current-lastRetry>15*60*1000) {
+  if(current-lastRetry>ALARM_INTERVAL_MS) {
    const state=await this.env.DB.prepare("SELECT last_success FROM sync_state WHERE name='catalog'")
     .first<{last_success:number}>();
    if(!state?.last_success) {
@@ -31,7 +34,7 @@ export class RadarScheduler extends DurableObject<Bindings> {
  }
  async alarm(): Promise<void> {
   // Arm the next alarm first, including when upstream errors occur.
-  await this.ctx.storage.setAlarm(Date.now()+15*60*1000);
+  await this.ctx.storage.setAlarm(Date.now()+ALARM_INTERVAL_MS);
   try {
    await runCollection(this.env);
    await deliverPending(this.env);

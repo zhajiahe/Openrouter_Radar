@@ -41,7 +41,7 @@ Workflow 不会读取或输出任何密钥明文，也不会把密钥放在 `wra
 3. 使用项目已配置的 HTTPS URL，准备好 Resend Key 和经验证的 `MAIL_FROM` 才能正常发送邮件。
 4. 合并 PR 至 `main` 会自动部署；也可在 **Actions → Deploy Cloudflare Worker → Run workflow** 手动触发。
 5. 工作流依次完成 `npm run check`、`wrangler d1 migrations apply DB --remote`、`wrangler deploy --secrets-file ...`。
-6. 访问站点的 `/api/health` 检查状态。首次扫描由第一次访问健康接口触发 Durable Object Alarm 初始化（此时可能返回 503），之后 Alarm 每 15 分钟唤醒。
+6. 访问站点的 `/api/health` 检查状态。首次扫描由第一次访问健康接口触发 Durable Object Alarm 初始化（此时可能返回 503），之后 Alarm 每分钟唤醒。目录每小时同步，所有模型 Provider 以约 1 小时的间隔滚动刷新；订阅只负责筛选变更及通知。
 
 ## 故障排查
 
