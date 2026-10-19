@@ -22,3 +22,15 @@ test('UI stylesheet imports the shared semantic design tokens', () => {
   assert.ok(css.includes(':focus-visible'), 'Keyboard focus indicator required');
   assert.ok(css.includes('prefers-reduced-motion'), 'Reduced motion required');
 });
+
+test('GitHub Actions is the sole automated production deployment path', () => {
+  const workflow = read('.github/workflows/deploy.yml');
+  assert.match(workflow, /push:\s*\n\s*branches:\s*\[main\]/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /DEPLOY_VIA_GITHUB_ACTIONS/);
+  assert.match(workflow, /environment: production/);
+  assert.match(workflow, /npm run check/);
+  assert.match(workflow, /wrangler d1 migrations apply DB --remote/);
+  assert.match(workflow, /wrangler deploy --config wrangler\.deploy\.json --secrets-file/);
+  assert.match(workflow, /Smoke-test deployed Worker/);
+});
