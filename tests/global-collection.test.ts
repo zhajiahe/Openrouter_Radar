@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CATALOG_INTERVAL_SECONDS, PROVIDER_INTERVAL_SECONDS, modelsPerTick, refreshCatalog } from '../src/collector';
-import { ALARM_INTERVAL_MS } from '../src/scheduler';
 import type { Bindings } from '../src/types';
 
 const source=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -10,7 +9,7 @@ const source=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'ut
 test('hourly global scanner stays within per-invocation budget and ignores subscriptions',()=>{
  assert.equal(CATALOG_INTERVAL_SECONDS,3600);
  assert.equal(PROVIDER_INTERVAL_SECONDS,3600);
- assert.equal(ALARM_INTERVAL_MS,60_000);
+ assert.match(source('src/scheduler.ts'),/ALARM_INTERVAL_MS=60_000/);
  assert.equal(modelsPerTick(),15);
  assert.equal(modelsPerTick('10'),10);
  assert.equal(modelsPerTick('999'),25);
