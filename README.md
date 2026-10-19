@@ -2,7 +2,9 @@
 
 > 个人自部署的 OpenRouter 模型和 Provider 变化雷达。部署者提供 OpenRouter API Key，访客无需填写。
 
-[English](#english) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
+**网站：** [访问在线网站](https://openrouter-radar.zhajiahe1994.workers.dev) · [健康状态](https://openrouter-radar.zhajiahe1994.workers.dev/api/health) · [源代码](https://github.com/zhajiahe/Openrouter_Radar)
+
+[UI 设计规范](docs/ui-design.md) · [贡献指南](CONTRIBUTING.md) · [English](#english) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
 
 **后端：Hono + TypeScript + Cloudflare Workers + D1 + Durable Objects。前端：React + Vite。**
 
@@ -17,6 +19,8 @@
 - **部署与运维**：单 Worker + D1，15 分钟 Durable Object Alarm；Hono API；仪表板、健康检查、CI 与开源部署说明。
 
 全站用户共享一套上游数据采集。**任意用户都不需要在 Web UI 填写任何 Key**；运营者在 Cloudflare Secrets 中配置自己的 OpenRouter API Key 和邮件发送凭证。
+
+**实例说明：** 当前公开站点可查看模型目录与历史事件；账号注册及邮件提醒取决于部署者是否启用邮件服务与开放注册。网站是自部署实例，非 OpenRouter 官方服务。
 
 ## 快速部署
 
@@ -42,7 +46,7 @@ npm install
 npx wrangler d1 migrations apply DB --local
 npm run build
 npm run dev
-# 测试：npm run check
+# 代码质量：npm run lint；完整检查：npm run check
 ```
 
 前端独立热更新：一个终端运行 `npm run dev`，另一个运行 `npx vite --config web/vite.config.ts`，通过 Vite 默认端口打开，`/api` 代理至 8787。
@@ -73,4 +77,4 @@ React UI -> Hono routes -> D1 (auth + models + endpoints + rules + events)
 
 OpenRouter Radar is a **self-hosted, open-source model/provider price monitoring and subscription service** built with Hono, Cloudflare Workers and D1. It has an open email/password sign-up flow with email verification, model catalogue, per-provider endpoint snapshots, price change history, RSS, in-app notices and email notifications. The deployer supplies one OpenRouter API key via Cloudflare Secret; site users do not provide credentials. No inference proxy, billing, usage accounting or cost calculator is included.
 
-See [deployment](docs/deployment.md) for setup and [security](SECURITY.md) for responsible disclosure.
+Live instance: [OpenRouter Radar](https://openrouter-radar.zhajiahe1994.workers.dev) (sign-up availability depends on instance settings). See [deployment](docs/deployment.md), [UI design guidelines](docs/ui-design.md), [contributing](CONTRIBUTING.md), and [security](SECURITY.md).

@@ -1,0 +1,32 @@
+/* Shared semantic design tokens; see docs/ui-design.md. */
+:root {
+  color-scheme: dark;
+  --radar-bg: #0b0f19;
+  --radar-sidebar: #101624;
+  --radar-topbar: #0d1320;
+  --radar-surface: #131b2a;
+  --radar-text: #dce5f7;
+  --radar-text-muted: #96a2b8;
+  --radar-text-tertiary: #6e7892;
+  --radar-input-text: #e6edff;
+  --radar-accent: #9a92fa;
+  --radar-accent-strong: #8278ff;
+  --radar-border: #2a3447;
+  --radar-input-border: #37435b;
+  --radar-focus: #a99aff;
+  --radar-focus-shadow: rgb(169 154 255 / 30%);
+  --radar-primary-start: #7264f5;
+  --radar-primary-end: #514ad1;
+  --radar-primary-border: #8a7dff;
+  --radar-success: #61deaa;
+  --radar-warning: #f7bc71;
+  --radar-danger: #ffadad;
+  --radar-radius-control: 8px;
+  --radar-radius-card: 12px;
+  --radar-space-1: 4px;
+  --radar-space-2: 8px;
+  --radar-space-3: 12px;
+  --radar-space-4: 16px;
+  --radar-space-6: 24px;
+  --radar-space-8: 32px;
+}
