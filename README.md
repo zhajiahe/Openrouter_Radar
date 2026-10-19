@@ -24,7 +24,7 @@
 
 ## 快速部署
 
-参见 [自部署指南](docs/deployment.md) 和 [GitHub Actions 部署说明](docs/github-actions-deployment.md)。需要 Cloudflare 账号、个人 OpenRouter API Key、可用的 D1 数据库，以及用于邮件通知的 Resend Key。
+参见 [自部署指南](docs/deployment.md) 和 [GitHub Actions 部署说明](docs/github-actions-deployment.md)。现有实例由 Cloudflare Builds 自动部署；GitHub Actions 部署默认关闭，避免重复发布。需要 Cloudflare 账号、个人 OpenRouter API Key、可用的 D1 数据库，以及用于邮件通知的 Resend Key。
 
 ```bash
 npm install

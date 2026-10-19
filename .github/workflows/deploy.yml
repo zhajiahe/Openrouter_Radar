@@ -13,6 +13,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Cloudflare Builds already deploys the linked main branch by default.
+    # Opt in only when using GitHub Actions as the single deployment owner.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.DEPLOY_VIA_GITHUB_ACTIONS == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     steps:
