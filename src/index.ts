@@ -62,8 +62,11 @@ app.get('/api/model',async c=>{
  if(!id)return c.json({error:'Missing model id'},400);
  const model=await c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,updated_at FROM models WHERE id=?').bind(id).first();
  if(!model)return c.json({error:'Model not found'},404);
- const endpoints=await c.env.DB.prepare(`SELECT id,provider,tag,source,input_price,output_price,status,checked_at
- FROM endpoints WHERE model_id=? ORDER BY provider,tag`).bind(id).all();
+ const endpoints=await c.env.DB.prepare(`SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.status,
+ CASE WHEN e.source='provider' AND j.last_error IS NULL AND j.last_checked>0
+  THEN j.last_checked ELSE e.checked_at END AS checked_at
+ FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id
+ WHERE e.model_id=? ORDER BY e.provider,e.tag`).bind(id).all();
  return c.json({model,endpoints:endpoints.results});
 });
 app.get('/api/events',async c=>{
