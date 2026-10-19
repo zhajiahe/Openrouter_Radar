@@ -7,7 +7,7 @@ import { runCollection } from './collector';
 import { deliverPending } from './delivery';
 
 const app=new Hono<AppEnv>();
-app.use('*',secureHeaders({contentSecurityPolicy:false}));
+app.use('*',secureHeaders());
 app.use('/api/*',async (c,next)=>{
  // SameSite cookies plus same-origin checks protect authenticated mutations against CSRF.
  const method=c.req.method.toUpperCase(),origin=c.req.header('Origin');

@@ -16,7 +16,7 @@ const million=(price:string|null)=>price===null?'—':'$'+(Number(price)*1e6).to
 const endpointPrice=(price:string|null)=>million(price);
 async function api<T>(path:string,options?:RequestInit):Promise<T>{
  const r=await fetch('/api'+path,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...options});
- const body=await r.json().catch(()=>({error:'Server unavailable'}));
+ const body=await r.json().catch(()=>({error:'Server unavailable'})) as {error?:string};
  if(!r.ok)throw new Error(body.error||'Request failed');
  return body as T;
 }

@@ -17,6 +17,6 @@ export async function verifyPassword(password:string, stored:string):Promise<boo
  const parts=stored.split('$');
  if(parts.length!==4 || parts[0]!=='pbkdf2_sha256'||parts[1]!=='150000'||!/^[0-9a-f]{32}$/.test(parts[2])||!/^[0-9a-f]{64}$/.test(parts[3])) return false;
  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
- const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:fromHex(parts[2]),iterations:150000,hash:'SHA-256'},key,256));
+ const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:new Uint8Array(fromHex(parts[2])),iterations:150000,hash:'SHA-256'},key,256));
  const expected=fromHex(parts[3]);let diff=0;for(let i=0;i<32;i++)diff|=bits[i]^expected[i];return diff===0;
 }
