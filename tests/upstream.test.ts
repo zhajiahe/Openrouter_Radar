@@ -7,6 +7,7 @@ test('catalog requires the operator secret and never sends it as query data',asy
  let auth='';
  globalThis.fetch=async (url,init)=>{
   auth=new Headers(init?.headers).get('Authorization')||'';
+  assert.equal(init?.redirect,'manual','Cloudflare Workers supports manual redirect handling');
   assert.ok(!String(url).includes(KEY));
   return new Response(JSON.stringify({data:[{id:'test/model',name:'Test',pricing:{prompt:'0'}}]}),{status:200});
  };
@@ -30,5 +31,15 @@ test('upstream errors fail closed without deleting cached snapshots',async()=>{
  const original=globalThis.fetch;
  globalThis.fetch=async()=>new Response('error',{status:429});
  try{await assert.rejects(listEndpoints('test/model',KEY),/429/);}
+ finally{globalThis.fetch=original;}
+});
+
+test('redirects fail closed instead of forwarding the owner API key',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async (_url,init)=>{
+  assert.equal(init?.redirect,'manual');
+  return new Response(null,{status:302,headers:{Location:'https://example.net/'}});
+ };
+ try{await assert.rejects(listModels(KEY),/HTTP 302/);}
  finally{globalThis.fetch=original;}
 });
