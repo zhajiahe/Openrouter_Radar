@@ -14,7 +14,7 @@
 ```bash
 npm install
 npx wrangler login
-npx wrangler d1 create radar
+npx wrangler d1 create openrouter-radar
 ```
 
 编辑 `wrangler.jsonc` 里 `database_id`，使用创建数据库命令返回的真实 UUID。不要保留 `REPLACE_WITH_YOUR_D1_DATABASE_ID`。
@@ -39,7 +39,7 @@ npx wrangler secret put RESEND_API_KEY
 ## 3. 迁移并部署
 
 ```bash
-npx wrangler d1 migrations apply radar --remote
+npx wrangler d1 migrations apply DB --remote
 npm run deploy
 ```
 
@@ -59,7 +59,7 @@ npm run deploy
 
 ```bash
 npm install
-npx wrangler d1 migrations apply radar --local
+npx wrangler d1 migrations apply DB --local
 npm run build
 npm run dev
 ```

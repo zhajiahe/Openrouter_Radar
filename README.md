@@ -23,9 +23,9 @@
 
 ```bash
 npm install
-npx wrangler d1 create radar
+npx wrangler d1 create openrouter-radar
 # 将返回的 database_id 写入 wrangler.jsonc
-npx wrangler d1 migrations apply radar --remote
+npx wrangler d1 migrations apply DB --remote
 npx wrangler secret put RESEND_API_KEY
 # 将 APP_ORIGIN 和 MAIL_FROM 改为自己的生产域名
 npm run deploy
@@ -37,7 +37,7 @@ npm run deploy
 
 ```bash
 npm install
-npx wrangler d1 migrations apply radar --local
+npx wrangler d1 migrations apply DB --local
 npm run build
 npm run dev
 # 测试：npm run check
