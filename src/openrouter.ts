@@ -5,7 +5,8 @@ export const modelSchema=z.object({
  description:z.string().nullish(),
  context_length:z.number().nullish(),
  expiration_date:z.union([z.number(),z.string()]).nullish(),
- alias_target:z.string().nullish(),
+ // OpenRouter returns alias_target as {slug,name} for alias models.
+ alias_target:z.unknown().nullish(),
  architecture:z.record(z.string(),z.unknown()).nullish(),
  supported_parameters:z.array(z.string()).nullish(),
  pricing:z.record(z.string(),z.unknown()).optional()
