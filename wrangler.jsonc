@@ -17,6 +17,6 @@
     "APP_ORIGIN": "https://openrouter-radar.zhajiahe1994.workers.dev",
     "MAIL_FROM": "Radar <notifications@example.com>",
     "OPEN_SIGNUP": "false",
-    "MAX_MODELS_PER_TICK": "10"
+    "MAX_MODELS_PER_TICK": "15"
   }
 }
