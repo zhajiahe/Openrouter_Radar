@@ -5,6 +5,7 @@ import auth, { requireAuth } from './auth';
 import { EVENT_KINDS, now, type AppEnv, type Bindings } from './types';
 import { CATALOG_INTERVAL_SECONDS, PROVIDER_INTERVAL_SECONDS } from './collector';
 import { ALARM_INTERVAL_MS } from './scheduler';
+import { safeCollectionError } from './history';
 export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
@@ -45,6 +46,12 @@ app.get('/api/models',async c=>{
  const q=(c.req.query('q')||'').trim().slice(0,80);
  const provider=(c.req.query('provider')||'').trim().slice(0,150);
  const sort=(c.req.query('sort')||'name').trim();
+ const author=(c.req.query('author')||'').trim().slice(0,100);
+ const modality=(c.req.query('modality')||'').trim().slice(0,50);
+ const capability=(c.req.query('capability')||'').trim().slice(0,80);
+ const minContext=Math.max(0,Math.min(20000000,Number(c.req.query('min_context'))||0));
+ const maxInput=Number(c.req.query('max_input_price'));
+ const hasMaxInput=c.req.query('max_input_price')!==undefined && Number.isFinite(maxInput) && maxInput>=0;
  const limit=Math.min(Math.max(Number(c.req.query('limit'))||30,1),100);
  const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
  const order:Record<string,string>={
@@ -54,8 +61,13 @@ app.get('/api/models',async c=>{
   price:'CASE WHEN lowest_input IS NULL THEN 1 ELSE 0 END, lowest_input ASC, m.name ASC'
  };
  const where=`(?='' OR instr(lower(m.name),lower(?))>0 OR instr(lower(m.id),lower(?))>0)
- AND (?='' OR EXISTS(SELECT 1 FROM endpoints ep WHERE ep.model_id=m.id AND ep.provider=? AND ep.status='active' AND ep.source='provider'))`;
- const binds=[q,q,q,provider,provider] as const;
+ AND (?='' OR EXISTS(SELECT 1 FROM endpoints ep WHERE ep.model_id=m.id AND ep.provider=? AND ep.status='active' AND ep.source='provider'))
+ AND (?='' OR substr(lower(m.id),1,length(?)+1)=lower(?)||'/')
+ AND m.context_length>=?
+ AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.architecture.input_modalities'),'[]')) j WHERE lower(j.value)=lower(?)))
+ AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.supported_parameters'),'[]')) j WHERE lower(j.value)=lower(?)))
+ AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=?))`;
+ const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,
    (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL) AS lowest_input,
@@ -72,16 +84,31 @@ app.get('/api/providers',async c=>{
  return c.json({data:rows.results});
 });
 app.get('/api/model',async c=>{
- const id=c.req.query('id');
+ const id=(c.req.query('id')||'').slice(0,200);
  if(!id)return c.json({error:'Missing model id'},400);
- const model=await c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,updated_at FROM models WHERE id=?').bind(id).first();
+ const [model,job,endpoints]=await Promise.all([
+  c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at FROM models WHERE id=?').bind(id).first(),
+  c.env.DB.prepare('SELECT last_checked,last_success,last_error FROM collection_jobs WHERE model_id=?').bind(id).first<{last_checked:number;last_success:number;last_error:string|null}>(),
+  c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,e.checked_at,e.first_seen FROM endpoints e WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
+ ]);
  if(!model)return c.json({error:'Model not found'},404);
- const endpoints=await c.env.DB.prepare(`SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.status,
- CASE WHEN e.source='provider' AND j.last_error IS NULL AND j.last_checked>0
-  THEN j.last_checked ELSE e.checked_at END AS checked_at
- FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id
- WHERE e.model_id=? ORDER BY e.provider,e.tag`).bind(id).all();
- return c.json({model,endpoints:endpoints.results});
+ const success=job?.last_success||0;
+ const failure=!!job?.last_error;
+ const collection={status:failure?'error':!success?'never':now()-success>2*PROVIDER_INTERVAL_SECONDS?'stale':'fresh',
+   last_attempt:job?.last_checked||null,last_success:success||null,last_error:safeCollectionError(job?.last_error||null),
+   age_seconds:success?Math.max(0,now()-success):null,
+   active_endpoints:endpoints.results.filter(ep=>ep.source==='provider'&&ep.status==='active').length,
+   missing_endpoints:endpoints.results.filter(ep=>ep.source==='provider'&&ep.status==='missing').length};
+ return c.json({model,endpoints:endpoints.results,collection});
+});
+app.get('/api/price-history',async c=>{
+ const modelId=(c.req.query('model_id')||'').slice(0,200);
+ const provider=(c.req.query('provider')||'').slice(0,150);
+ const dimension=c.req.query('dimension')==='output'?'output':'input';
+ if(!modelId)return c.json({error:'model_id is required'},400);
+ const since=Math.max(0,Number(c.req.query('since'))||now()-90*86400);
+ const rows=await c.env.DB.prepare("SELECT endpoint_id,model_id,provider,source,dimension,price,observed_at FROM price_history WHERE model_id=? AND (?='' OR provider=?) AND dimension=? AND observed_at>=? ORDER BY observed_at ASC,provider ASC LIMIT 2000").bind(modelId,provider,provider,dimension,since).all();
+ return c.json({data:rows.results,unit:'USD/token',method:'observed_change_points',retention_days:180});
 });
 app.get('/api/events',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
