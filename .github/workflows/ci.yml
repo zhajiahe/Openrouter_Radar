@@ -13,3 +13,5 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run check
+      - run: npx wrangler d1 migrations apply radar --local
+      - run: npx wrangler deploy --dry-run
