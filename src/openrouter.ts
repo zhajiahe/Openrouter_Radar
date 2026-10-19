@@ -29,7 +29,8 @@ async function request(path:string,apiKey:string):Promise<unknown>{
    'Authorization':'Bearer '+apiKey.trim(),
    'User-Agent':'OpenRouterRadar/0.3 (+https://github.com/zhajiahe/Openrouter_Radar)'
   },
-  redirect:'error',signal:AbortSignal.timeout(12_000)
+  // Workers disallow RequestRedirect='error'; manual prevents unsafe redirect following.
+  redirect:'manual',signal:AbortSignal.timeout(12_000)
  });
  if(!response.ok) {
   const error=new Error('OpenRouter API HTTP '+response.status);
