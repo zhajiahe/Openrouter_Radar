@@ -1,8 +1,10 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
+import './router-inspired.css';
 
-type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null};
+type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number};
+type ProviderOption={provider:string;model_count:number};
 type Endpoint={id:string;provider:string;tag:string;source:string;input_price:string|null;output_price:string|null;status:string;checked_at:number};
 type Watch={id:string;model_id:string;name:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string};
 type Event={id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number};
@@ -42,7 +44,20 @@ function App(){
  const [message,setMessage]=useState('');
  const [stats,setStats]=useState({models:0,providers:0,subscriptions:0,events24h:0});
  const [models,setModels]=useState<Model[]>([]);
+ const [modelTotal,setModelTotal]=useState(0);
+ const [modelLoading,setModelLoading]=useState(false);
+ const [providers,setProviders]=useState<ProviderOption[]>([]);
+ const [providerFilter,setProviderFilter]=useState('');
+ const [sort,setSort]=useState('name');
+ const catalogSearch=useRef<HTMLInputElement>(null);
  const [events,setEvents]=useState<Event[]>([]);
+ const [recentEvents,setRecentEvents]=useState<Event[]>([]);
+ const [modelEvents,setModelEvents]=useState<Event[]>([]);
+ const [eventSearch,setEventSearch]=useState('');
+ const [eventKind,setEventKind]=useState('');
+ const [eventPage,setEventPage]=useState(1);
+ const [eventTotal,setEventTotal]=useState(0);
+ const [loadingEvents,setLoadingEvents]=useState(false);
  const [watches,setWatches]=useState<Watch[]>([]);
  const [notices,setNotices]=useState<Notice[]>([]);
  const [search,setSearch]=useState('');
@@ -58,7 +73,7 @@ function App(){
  async function loadPublic(){
   const results=await Promise.allSettled([api<typeof stats>('/stats'),api<{data:Event[]}>('/events?limit=40'),api<typeof status>('/health')]);
   if(results[0].status==='fulfilled')setStats(results[0].value);
-  if(results[1].status==='fulfilled')setEvents(results[1].value.data);
+  if(results[1].status==='fulfilled')setRecentEvents(results[1].value.data);
   if(results[2].status==='fulfilled')setStatus(results[2].value);
  }
  async function loadPrivate(){
@@ -66,23 +81,59 @@ function App(){
   if(results[0].status==='fulfilled')setWatches(results[0].value.data);
   if(results[1].status==='fulfilled')setNotices(results[1].value.data);
  }
- async function loadModels(q:string,p:number){
-  try{const r=await api<{data:Model[]}>('/models?q='+encodeURIComponent(q)+'&page='+p+'&limit=30');setModels(r.data);}
-  catch(e){setError(String(e));}
+ async function loadModels(q:string,p:number,provider:string,order:string){
+  setModelLoading(true);
+  try{
+   const params=new URLSearchParams({q,page:String(p),limit:'30',provider,sort:order});
+   const r=await api<{data:Model[];total:number}>('/models?'+params.toString());
+   setModels(r.data);setModelTotal(r.total);
+  }catch(e){setError((e as Error).message);}finally{setModelLoading(false);}
+ }
+ async function loadEvents(q:string,kind:string,p:number){
+  setLoadingEvents(true);
+  try{
+   const params=new URLSearchParams({q,kind,page:String(p),limit:'30'});
+   const r=await api<{data:Event[];total:number}>('/events?'+params.toString());
+   setEvents(r.data);setEventTotal(r.total);
+  }catch(e){setError((e as Error).message);}finally{setLoadingEvents(false);}
  }
  async function inspect(model:Model){
   setSelected(model);setView('catalog');setWatchProvider('');setThreshold(0);setFrequency('instant');
-  try{const r=await api<{endpoints:Endpoint[]}>('/model?id='+encodeURIComponent(model.id));setEndpoints(r.endpoints);}catch(e){setError(String(e));}
+  setEndpoints([]);setModelEvents([]);
+  history.replaceState(null,'','#model='+encodeURIComponent(model.id));
+  try{
+   const [details,changes]=await Promise.all([
+    api<{model:Model;endpoints:Endpoint[]}>('/model?id='+encodeURIComponent(model.id)),
+    api<{data:Event[]}>('/events?model_id='+encodeURIComponent(model.id)+'&limit=8')
+   ]);
+   setSelected(details.model);setEndpoints(details.endpoints);setModelEvents(changes.data);
+  }catch(e){setError((e as Error).message);}
  }
  useEffect(()=>{
   const params=new URLSearchParams(location.search);
   if(params.has('verified'))setMessage('邮箱验证成功，请登录。');
   if(params.has('reset'))setAuthMode('reset');
   api<{user:{id:string;email:string}}>('/auth/me').then(r=>{setUser(r.user);}).catch(()=>{});
+  api<{data:ProviderOption[]}>('/providers').then(r=>setProviders(r.data)).catch(()=>{});
+  const modelId=decodeURIComponent(new URLSearchParams(location.hash.slice(1)).get('model')||'');
+  if(modelId){
+   void api<{model:Model}>('/model?id='+encodeURIComponent(modelId)).then(r=>void inspect(r.model)).catch(()=>{});
+  }
   void loadPublic();
  },[]);
  useEffect(()=>{if(user)void loadPrivate();},[user]);
- useEffect(()=>{void loadModels(search,page);},[search,page]);
+ useEffect(()=>{void loadModels(search,page,providerFilter,sort);},[search,page,providerFilter,sort]);
+ useEffect(()=>{void loadEvents(eventSearch,eventKind,eventPage);},[eventSearch,eventKind,eventPage]);
+ useEffect(()=>{
+  const onKey=(event:KeyboardEvent)=>{
+   const el=event.target as HTMLElement;
+   if(event.key==='/'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(el.tagName)&&!el.isContentEditable){
+    event.preventDefault();setView('catalog');requestAnimationFrame(()=>catalogSearch.current?.focus());
+   }
+   if(event.key==='Escape'&&document.activeElement===catalogSearch.current)catalogSearch.current?.blur();
+  };
+  window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
+ },[]);
  async function submitAuth(e:React.FormEvent){
   e.preventDefault();setBusy(true);setError('');setMessage('');
   try{
@@ -121,7 +172,7 @@ function App(){
  }
  async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);setView('overview');}
  const unread=notices.filter(n=>!n.read_at).length;
- const titles:Record<string,string>={overview:'市场总览',catalog:'模型目录',events:'价格动态',watches:'我的订阅',notices:'通知中心',account:'账号'};
+ const titles:Record<string,string>={overview:'Overview',catalog:'Models',events:'Changes',watches:'Watchlist',notices:'Notifications',account:'Account'};
  const scanned=status.provider_scanned??0;
  const total=status.provider_total??stats.models;
  const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
