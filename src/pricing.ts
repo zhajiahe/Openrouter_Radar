@@ -38,7 +38,7 @@ function policyText(value:unknown):string|null{
 export function findPriceChanges(previous:Prices,current:Prices):PriceDelta[]{
  const result:PriceDelta[]=[];
  const keys=new Set([...Object.keys(previous.raw),...Object.keys(current.raw),'prompt','completion']);
- for(const key of [...keys].sort()){
+ for(const key of ['prompt','completion', ...[...keys].filter(key=>key!=='prompt'&&key!=='completion').sort()]){
   if(key==='overrides')continue;
   const oldValue=key==='prompt'?previous.prompt:key==='completion'?previous.completion:normalizePrice(previous.raw[key]);
   const newValue=key==='prompt'?current.prompt:key==='completion'?current.completion:normalizePrice(current.raw[key]);
