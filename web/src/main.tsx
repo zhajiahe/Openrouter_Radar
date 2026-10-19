@@ -178,17 +178,17 @@ function App(){
  const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
  return <div className="layout">
   <aside className="sidebar">
-   <div className="brand"><span className="brand-icon" aria-hidden="true">◉</span><span>openrouter <b>radar.</b></span></div>
-   <div className="side-caption">WORKSPACE / 数据中心</div>
-   <nav aria-label="主要导航">{[['overview','◈','市场总览'],['catalog','▤','模型目录'],['events','↗','价格动态'],['watches','◎','我的订阅'],['notices','◌','通知中心']] .map(([id,ico,name])=>
-    <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setSelected(null);setError('');}}>
+   <div className="brand"><span className="brand-icon" aria-hidden="true">◈</span><span>OpenRouter <b>Radar</b></span></div>
+   <div className="side-caption">MODEL MONITORING</div>
+   <nav aria-label="主要导航">{[['overview','⌂','概览'],['catalog','▦','Models'],['events','↗','Changes'],['watches','☆','Watchlist'],['notices','◌','通知']] .map(([id,ico,name])=>
+    <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setError('');if(id!=='catalog')history.replaceState(null,'',location.pathname+location.search);}}>
      <span className="nav-icon">{ico}</span>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
     </button>)}</nav>
    <div className="side-footer"><span className="sidebar-status"><span className="online-dot"/> OPEN SOURCE RADAR</span><p>不需要个人 API Key。<br/>持续收集，按需订阅。</p><a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">在 GitHub 查看项目 ↗</a></div>
   </aside>
   <main className="main">
    <header className="topbar">
-    <div className="breadcrumb"><span>工作台</span><span className="breadcrumb-separator">/</span><b>{titles[view]}</b></div>
+    <div className="breadcrumb"><span>Radar</span><span className="breadcrumb-separator">/</span><b>{titles[view]}</b></div>
     <div className="topbar-actions">
      <span className={'live-indicator '+(status.status==='ok'?'':'muted-status')} role="status"><span className="online-dot"/>{status.status==='ok'?'同步正常':'同步状态待确认'}</span>
      <button className="account-button" onClick={()=>setView('account')}>{user?user.email:'登录 / 注册'} <span aria-hidden="true">↗</span></button>
@@ -200,12 +200,12 @@ function App(){
     {view==='overview'&&<>
      <div className="hero">
       <div className="hero-copy">
-       <div className="eyebrow">OPENROUTER / MARKET INTELLIGENCE</div>
-       <h1>模型市场动态，<br/><span className="accent">尽在掌握。</span></h1>
-       <p>持续追踪模型定价、Provider 与能力变化。每小时全量采集，重要变化只在你订阅后通知你。</p>
+       <div className="eyebrow">OPEN SOURCE · OPENROUTER DATA</div>
+       <h1>Model prices,<br/><span className="accent">under your radar.</span></h1>
+       <p>模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。浏览公开数据，订阅你在意的变动。</p>
        <div className="hero-actions">
         <button className="primary" onClick={()=>setView('catalog')}>探索模型目录 <span aria-hidden="true">↗</span></button>
-        <span className="hero-secondary">公开数据 · 无需用户 API Key</span>
+        <span className="hero-secondary">每小时采集 · 无需访客 API Key</span>
        </div>
       </div>
       <div className="radar-visual" aria-hidden="true">
@@ -219,9 +219,9 @@ function App(){
       {[[stats.models,'模型总数','▦','目录内的公开模型'],[stats.providers,'活跃 Provider','◇','已发现的服务商'],[stats.subscriptions,'全站订阅','◎','用户设置的提醒规则'],[stats.events24h,'24小时事件','↗','过去一天的真实变化']].map(([value,labelText,icon,note])=>
        <div className="metric" key={String(labelText)}><div className="metric-label"><span aria-hidden="true">{icon}</span>{labelText}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
      </div>
-     <div className="section-head"><div><h2>市场最近变化</h2><p className="section-heading-sub">仅展示实际发现的变化，不生成模拟数据</p></div><button className="text-action" onClick={()=>setView('events')}>全部事件 ↗</button></div>
+     <div className="section-head"><div><h2>Recent changes</h2><p className="section-heading-sub">仅展示实际发现的变化，不生成模拟数据</p></div><button className="text-action" onClick={()=>setView('events')}>全部事件 ↗</button></div>
      <div className="overview-grid">
-      <EventsTable data={events.slice(0,8)}/>
+      <EventsTable data={recentEvents.slice(0,8)}/>
       <div className="panel scanner-panel">
        <div className="scanner-head"><strong>全量采集进度</strong><span className="scanner-icon" aria-hidden="true">◎</span></div>
        <div className="scanner-stat"><strong>{scanned.toLocaleString()}</strong><span>/ {total.toLocaleString()} 个模型</span></div>
@@ -236,36 +236,65 @@ function App(){
      </div>
     </>}
     {view==='catalog'&&<>
-     <div className="page-heading"><div><div className="eyebrow">MODEL CATALOG</div><h1>模型目录</h1><p>选择模型，查看不同 Provider 的当前报价，并创建通知订阅。</p></div></div>
-     <div className="search-row"><input aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索模型名称或 ID，例如 deepseek..." /><button onClick={()=>{void loadModels(search,page);}}>搜索</button></div>
+     <div className="page-heading"><div><div className="eyebrow">EXPLORE MODELS</div><h1>Models <span className="model-count">{modelTotal.toLocaleString()}</span></h1><p>按模型、Provider、价格探索 OpenRouter 市场。仅显示实际采集的数据。</p></div></div>
+     <div className="search-row">
+      <div className="search-field"><span aria-hidden="true">⌕</span><input ref={catalogSearch} aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="Search models, e.g. claude, gpt, deepseek..." /><kbd>/</kbd></div>
+      <label className="sort-field"><span>排序</span><select aria-label="模型排序" value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}}><option value="name">名称 A–Z</option><option value="newest">最近更新</option><option value="context">上下文长度</option><option value="price">最低输入价</option></select></label>
+     </div>
      <div className="catalog-grid">
+      <aside className="panel filter-panel" aria-label="模型筛选">
+       <h3>Filters</h3>
+       <label htmlFor="provider-filter">Provider</label>
+       <select id="provider-filter" value={providerFilter} onChange={e=>{setProviderFilter(e.target.value);setPage(1);setSelected(null);}}>
+        <option value="">All providers</option>
+        {providers.map(p=><option key={p.provider} value={p.provider}>{p.provider} · {p.model_count}</option>)}
+       </select>
+       <button className="clear-filters" disabled={!providerFilter&&!search&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');}}>清除筛选 ↺</button>
+       <div className="filter-divider"/>
+       <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 ↗</a></div>
+      </aside>
       <div className="panel models-panel">
-       <div className="panel-title">模型 <span className="muted">({models.length} / 页)</span></div>
-       <div className="model-list">{models.map(m=><button key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')} aria-pressed={selected?.id===m.id} onClick={()=>void inspect(m)}>
-        <span className="model-avatar" aria-hidden="true">{m.id.split('/')[0].slice(0,2).toUpperCase()}</span><span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small></span><span className="model-chevron" aria-hidden="true">›</span></button>)}
-       {!models.length&&<div className="empty">暂无匹配的模型。请尝试其他关键词，或等待下次目录同步。</div>}</div>
-       <div className="pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← 上一页</button><span>第 {page} 页</span><button disabled={models.length<30} onClick={()=>setPage(p=>p+1)}>下一页 →</button></div>
+       <div className="panel-title"><span>All models <span className="muted">({modelTotal.toLocaleString()})</span></span><span className="muted">USD / 1M tokens</span></div>
+       <div className="model-list" aria-busy={modelLoading}>{models.map(m=><button key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')} aria-pressed={selected?.id===m.id} onClick={()=>void inspect(m)}>
+        <span className="model-avatar" aria-hidden="true">{m.id.split('/')[0].slice(0,2).toUpperCase()}</span>
+        <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{m.context_length?Math.round(m.context_length/1024)+'K ctx':'Context unknown'} · {m.provider_count||0} providers</span></span>
+        <span className="model-price">{m.lowest_input!==null&&m.lowest_input!==undefined?million(String(m.lowest_input)):'—'}<small>input / M</small></span>
+       </button>)}
+       {modelLoading&&<div className="empty" role="status">正在加载模型…</div>}
+       {!modelLoading&&!models.length&&<div className="empty">没有匹配的模型。清除筛选，或等待下一次采集。</div>}</div>
+       <div className="pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Previous</button><span>{page} / {Math.max(1,Math.ceil(modelTotal/30))}</span><button disabled={page*30>=modelTotal} onClick={()=>setPage(p=>p+1)}>Next →</button></div>
       </div>
       <div className="panel detail-panel">{selected?<>
-       <div className="panel-title"><span>模型详情</span><span className="light-tag">最近一次采集快照</span></div>
-       <h2>{selected.name}</h2><code className="code-id">{selected.id}</code>
-       <p className="muted">上下文 {selected.context_length?.toLocaleString()||'未知'} tokens{selected.alias_target?' · 别名指向 '+selected.alias_target:''}{selected.expiration_date?' · 到期 '+new Date(selected.expiration_date*1000).toLocaleDateString():''}</p>
-       <h3>Provider Endpoint</h3>
-       <div className="scroll-x"><table><thead><tr><th>Provider</th><th>输入 $/M</th><th>输出 $/M</th><th>采集时间</th></tr></thead><tbody>
-        {endpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.tag}</small></td><td>{endpointPrice(ep.input_price)}</td><td>{endpointPrice(ep.output_price)}</td><td><small>{time(ep.checked_at)}</small></td></tr>)}
-       </tbody></table>{!endpoints.length&&<div className="empty">该模型的 Provider 数据仍在全量采集队列中，稍后会自动更新。</div>}</div>
-       <div className="subscribe-box"><h3>创建监控订阅</h3><label>Provider 范围</label>
-        <select value={watchProvider} onChange={e=>setWatchProvider(e.target.value)}><option value="">所有 Provider</option>{[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=><option key={p} value={p}>{p}</option>)}</select>
-        <label>提醒事件</label><div className="checks">{EVENTS.map(([id,text])=><label key={id}><input type="checkbox" checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.target.checked?[...a,id]:a.filter(k=>k!==id))}/>{text}</label>)}</div>
-        <label>价格变化阈值（%）</label><input type="number" min="0" max="1000" value={threshold} onChange={e=>setThreshold(Number(e.target.value))}/>
-        <label>通知节奏</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="instant">变化后尽快发送</option><option value="daily">每日 08:00 UTC 汇总</option></select>
-        <button className="primary full" disabled={busy} onClick={()=>void addWatch()}>{user?'创建订阅':'登录后创建订阅'} →</button>
-        <small className="muted">全量采集持续运行；订阅只负责筛选后续变化并通知，不影响采集频率。</small>
+       <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>{void navigator.clipboard?.writeText(location.origin+'/#model='+encodeURIComponent(selected.id));setMessage('模型链接已复制');}}>复制链接 ↗</button></div>
+       <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code></div></div>
+       <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{endpoints.filter(e=>e.source==='provider'&&e.status==='active').length}</strong> Active endpoints</span></div>
+       {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
+       {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
+       <div className="detail-section-head"><h3>Provider pricing</h3><small>USD / 1M tokens · 来自最近一次采集</small></div>
+       <div className="scroll-x"><table><thead><tr><th>Provider</th><th>Input</th><th>Output</th><th>检查时间</th></tr></thead><tbody>
+        {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.tag||'Active'}</small></td><td className="num">{endpointPrice(ep.input_price)}</td><td className="num">{endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
+       </tbody></table>{!endpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
+       <div className="detail-section-head"><h3>Recent changes</h3><small>仅记录首次快照后的实际变化</small></div>
+       <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
+       <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
+        <label htmlFor="watch-provider">Provider</label>
+        <select id="watch-provider" value={watchProvider} onChange={e=>setWatchProvider(e.target.value)}><option value="">所有 Provider</option>{[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=><option key={p} value={p}>{p}</option>)}</select>
+        <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><input id="watch-threshold" type="number" min="0" max="1000" value={threshold} onChange={e=>setThreshold(Number(e.target.value))}/></div>
+         <div><label htmlFor="watch-frequency">通知频率</label><select id="watch-frequency" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="instant">尽快通知</option><option value="daily">每日摘要 (UTC)</option></select></div></div>
+        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><label key={id}><input type="checkbox" checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.target.checked?[...a,id]:a.filter(k=>k!==id))}/>{text}</label>)}</div></details>
+        <button className="primary full" disabled={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</button>
        </div>
-      </>:<div className="selection-empty"><span>◎</span><h3>选中一个模型</h3><p>查看报价、端点及监控选项</p></div>}</div>
+      </>:<div className="selection-empty"><span>▧</span><h3>选择一个模型</h3><p>对比 Provider 报价、查看真实变化、创建监控。</p><small>点击左侧模型查看详情</small></div>}</div>
      </div>
     </>}
-    {view==='events'&&<><div className="page-heading"><div><div className="eyebrow">LIVE EVENT HISTORY</div><h1>价格动态</h1><p>记录实际采集发现的变化，不虚构历史。对外支持 RSS 订阅。</p></div><a className="outline-button" href="/feed.xml">RSS 订阅 ↗</a></div><EventsTable data={events}/></>}
+    {view==='events'&&<>
+     <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml">RSS ↗</a></div>
+     <div className="events-filters"><div className="search-field"><span aria-hidden="true">⌕</span><input aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
+      <select aria-label="事件类型" value={eventKind} onChange={e=>{setEventKind(e.target.value);setEventPage(1);}}><option value="">全部事件</option>{EVENTS.map(([id,text])=><option key={id} value={id}>{text}</option>)}</select>
+     </div>
+     <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
+     <div className="pager events-pager"><button disabled={eventPage<=1} onClick={()=>setEventPage(p=>p-1)}>← Previous</button><span>{eventPage} / {Math.max(1,Math.ceil(eventTotal/30))}</span><button disabled={eventPage*30>=eventTotal} onClick={()=>setEventPage(p=>p+1)}>Next →</button></div>
+    </>}
     {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>我的订阅</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><button className="primary" onClick={()=>setView('catalog')}>+ 新建订阅</button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
       {watches.length?<div className="watch-grid">{watches.map(w=><div className="watch-card" key={w.id}><div><span className="light-tag">{w.provider||'所有 Provider'}</span><h3>{w.name}</h3><code>{w.model_id}</code><p>{JSON.parse(w.events_json).map(label).join(' · ')}</p><small>阈值 {w.threshold_pct}% · {w.frequency==='daily'?'每日摘要':'即时通知'}</small></div><button className="delete" onClick={()=>void removeWatch(w.id)}>取消订阅</button></div>)}</div>:<div className="empty roomy">还没有任何订阅。进入模型目录，选择你想关注的模型。</div>}</div>}
