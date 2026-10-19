@@ -73,3 +73,23 @@ npm run dev
 ## 恢复与升级
 
 备份 D1 前先导出数据库并核实恢复计划。升级时先备份，再通过 `d1 migrations apply` 执行新增迁移；代码更新使用 `wrangler deploy`，避免直接修改已有迁移文件。
+
+## 本仓库维护者当前实例（2026-10-19）
+
+- 实例 URL：`https://openrouter-radar.zhajiahe1994.workers.dev`
+- D1 名称：`openrouter-radar`；数据库已创建且已执行 `0001_initial.sql`
+- 调度：`RadarScheduler` Durable Object Alarm，每 15 分钟；不占用 Workers Free 的 Cron Trigger 名额
+- Cloudflare Builds 已连接 GitHub `main`，合并或推送后自动构建部署
+- **目前 `OPEN_SIGNUP=false`**：还未配置实例邮件服务，防止用户注册后无法验证邮箱；不应声称公开注册已可用
+
+### 启用真正的公开注册邮件
+
+在 Cloudflare Workers 的 `openrouter-radar` 项目中：
+
+1. 在 Resend 验证你实际拥有的发信域名。
+2. 在 Cloudflare Worker 的 Secrets 中添加 `RESEND_API_KEY`（不要放到 GitHub 或公开配置里）。
+3. 将 `wrangler.jsonc` 中的 `MAIL_FROM` 改为已验证的地址。
+4. 将 `OPEN_SIGNUP` 设置为 `true`，提交到 `main`，等待 Cloudflare Builds 成功。
+5. 用自己的邮箱执行注册、验证、登录、订阅并确认收到测试告警后，再对外公开推广。
+
+公开实例建议启用 Turnstile/WAF、防滥用额度及发信上限。普通订阅者始终无需任何 OpenRouter API Key。
