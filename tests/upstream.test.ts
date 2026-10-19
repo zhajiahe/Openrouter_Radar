@@ -43,3 +43,12 @@ test('redirects fail closed instead of forwarding the owner API key',async()=>{
  try{await assert.rejects(listModels(KEY),/HTTP 302/);}
  finally{globalThis.fetch=original;}
 });
+
+test('catalog accepts OpenRouter object-valued alias_target',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>new Response(JSON.stringify({data:[{id:'alias/model',name:'Alias',alias_target:{slug:'vendor/model',name:'Model'},pricing:{prompt:'0.1'}}]}),{status:200});
+ try{
+  const results=await listModels(KEY);
+  assert.deepEqual(results[0].alias_target,{slug:'vendor/model',name:'Model'});
+ }finally{globalThis.fetch=original;}
+});
