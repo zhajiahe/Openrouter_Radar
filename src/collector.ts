@@ -114,12 +114,16 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
   if(allowAdded)stmts.push(event(env,id,modelId,provider,'endpoint.added',null,null,null,null,ts));
   await env.DB.batch(stmts);return;
  }
+ const changes=findPriceChanges(storedPrices(previous.pricing_json),prices);
+ // A successful sweep is recorded on collection_jobs. Do not rewrite identical
+ // endpoint rows every hour, which would exhaust D1 Free daily write limits.
+ if(previous.status==='active'&&previous.missing_count===0&&changes.length===0)return;
  const stmts:D1PreparedStatement[]=[
   env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=? WHERE id=?")
    .bind(prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,id)
  ];
  if(previous.status==='missing')stmts.push(event(env,id,modelId,provider,'endpoint.restored',null,null,null,null,ts));
- for(const delta of findPriceChanges(storedPrices(previous.pricing_json),prices)){
+ for(const delta of changes){
   stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts));
  }
  await env.DB.batch(stmts);
