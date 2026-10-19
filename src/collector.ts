@@ -43,7 +43,7 @@ async function emit(env:Bindings,endpointIdValue:string,modelId:string,provider:
   let selected:string[]=[];try{selected=JSON.parse(sub.events_json)}catch{continue}
   if(!selected.includes(kind))continue;
   if(dimension && !thresholdMatches(pct,sub.threshold_pct))continue;
-  const scheduled= sub.frequency==='daily' ? Math.floor(ts/86400)*86400+86400+8*3600 : ts;
+  const scheduled= sub.frequency==='daily' ? Math.ceil((ts-8*3600)/86400)*86400+8*3600 : ts;
   await env.DB.prepare(`INSERT OR IGNORE INTO notifications(id,user_id,event_id,subscription_id,next_attempt_at,created_at)
    VALUES(?,?,?,?,?,?)`).bind(crypto.randomUUID(),sub.user_id,eventId,sub.id,scheduled,ts).run();
  }
@@ -86,7 +86,7 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
   const seen=new Set<string>();
   const initial=existingRows.results.length===0;
   for(const item of items){
-   const provider=item.provider_name,tag=item.tag||'',variant=[item.quantization||'',item.name||''].join('|');
+   const provider=item.provider_name,tag=item.tag||'',variant=[item.quantization||'',String(item.service_tier||''),tag?'':item.name||''].join('|');
    const id=await endpointId(modelId,provider,tag,variant);
    if(seen.has(id))continue;
    seen.add(id);

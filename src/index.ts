@@ -8,6 +8,16 @@ import { deliverPending } from './delivery';
 
 const app=new Hono<AppEnv>();
 app.use('*',secureHeaders({contentSecurityPolicy:false}));
+app.use('/api/*',async (c,next)=>{
+ // SameSite cookies plus same-origin checks protect authenticated mutations against CSRF.
+ const method=c.req.method.toUpperCase(),origin=c.req.header('Origin');
+ if(!['GET','HEAD','OPTIONS'].includes(method) && origin){
+  const configured=new URL(c.env.APP_ORIGIN).origin;
+  const localVite=configured==='http://localhost:8787'&&origin==='http://localhost:5173';
+  if(origin!==configured&&!localVite)return c.json({error:'Cross-origin request rejected'},403);
+ }
+ await next();
+});
 app.onError((err,c)=>{console.error('Unhandled Radar error',err);return c.json({error:'Internal server error'},500);});
 app.route('/api/auth',auth);
 app.get('/api/health',async c=>{

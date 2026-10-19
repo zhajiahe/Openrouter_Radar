@@ -1,4 +1,3 @@
-PRAGMA foreign_keys = ON;
 CREATE TABLE users (
  id TEXT PRIMARY KEY,
  email TEXT NOT NULL UNIQUE,
