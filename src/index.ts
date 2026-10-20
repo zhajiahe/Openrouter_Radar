@@ -136,7 +136,7 @@ app.get('/api/provider-stability',async c=>{
   GROUP BY o.dimension,o.unit ORDER BY o.dimension,o.unit LIMIT 80`)
   .bind(modelId).all<{dimension:string;unit:string;endpoints:number}>();
  const allDimensions=dims.results||[];
- const dimension=(c.req.query('dimension')||'').slice(0,250)||allDimensions[0]?.dimension||'input';
+ const dimension=(c.req.query('dimension')||'').slice(0,250)||allDimensions.find(d=>d.dimension==='input')?.dimension||allDimensions[0]?.dimension||'input';
  if(!allDimensions.some(d=>d.dimension===dimension)&&c.req.query('dimension'))
   return c.json({error:'dimension has no observed price for this model'},400);
  const endpoints=await c.env.DB.prepare(`SELECT e.id,e.provider,e.tag,j.last_success
