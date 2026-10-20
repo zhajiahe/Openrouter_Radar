@@ -23,3 +23,12 @@ export async function prunePriceHistory(env:Bindings,clock=now()):Promise<number
  const result=await env.DB.prepare('DELETE FROM price_history WHERE rowid IN (SELECT rowid FROM price_history WHERE observed_at<? LIMIT 250)').bind(cutoff).run();
  return result.meta.changes||0;
 }
+
+/** Seed one observed baseline for legacy endpoints only when a successful real scan occurs.
+ * NOT EXISTS prevents fabricating duplicate points for already recorded endpoints. */
+export function missingHistoryStatements(env:Bindings,endpointId:string,modelId:string,provider:string,source:'model'|'provider',current:Prices,ts=now()):D1PreparedStatement[]{
+ const dims=[['input',current.prompt],['output',current.completion]] as const;
+ return dims.filter(([,price])=>price!==null).map(([dimension,price])=>
+  env.DB.prepare("INSERT OR IGNORE INTO price_history(endpoint_id,model_id,provider,source,dimension,price,observed_at) SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM price_history WHERE endpoint_id=? AND dimension=?)")
+   .bind(endpointId,modelId,provider,source,dimension,price,ts,endpointId,dimension));
+}
