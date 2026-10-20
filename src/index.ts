@@ -214,7 +214,7 @@ app.delete('/api/subscriptions/:id',requireAuth,async c=>{
  return c.json({deleted:!!removed.meta.changes});
 });
 app.get('/api/notifications',requireAuth,async c=>{
- const rows=await c.env.DB.prepare(`SELECT n.id,n.status,n.sent_at,n.read_at,n.created_at,
+ const rows=await c.env.DB.prepare(`SELECT n.id,n.status,n.sent_at,n.read_at,n.created_at,n.attempts,n.last_error,
  e.kind,e.model_id,e.provider,e.dimension,e.old_price,e.new_price,e.change_pct
  FROM notifications n JOIN price_events e ON e.id=n.event_id WHERE n.user_id=?
  ORDER BY n.created_at DESC LIMIT 100`).bind(c.get('userId')).all();
