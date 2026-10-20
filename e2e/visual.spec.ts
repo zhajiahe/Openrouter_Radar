@@ -43,7 +43,8 @@ for(const width of widths){
     const footer=page.getByRole('contentinfo',{name:'网站页脚'});
     await expect(footer).toContainText('Model prices, under your radar.');
     await expect(footer).toContainText('模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。');
-    await expect(page.locator('.hero')).toHaveCount(0);
+    await expect(page.locator('.hero, .overview-intro')).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'探索模型目录'})).toHaveCount(0);
     await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href','/favicon.svg');
     const favicon=await page.request.get('/favicon.svg');
     expect(favicon.ok()).toBeTruthy();

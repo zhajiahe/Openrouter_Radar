@@ -311,13 +311,6 @@ input[type="checkbox"]{accent-color:#7052b9}
 /* The opening view focuses on live data. Brand copy belongs to the global footer. */
 .main{display:flex;flex-direction:column}
 .content{width:100%;flex:1}
-.overview-intro{
- display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
- gap:12px 20px;padding:0 0 18px
-}
-.overview-intro .eyebrow{font-size:10px;font-weight:700}
-.overview-intro-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
-.overview-intro-actions>span{color:var(--radar-text-tertiary);font-size:11px}
 .site-footer{
  width:100%;max-width:1570px;margin:0 auto;
  padding:0 clamp(18px,3.4vw,62px) 30px;color:var(--radar-text)
@@ -336,13 +329,8 @@ input[type="checkbox"]{accent-color:#7052b9}
 }
 .site-footer a:hover{text-decoration:underline}
 @media(max-width:720px){
- .overview-intro{align-items:flex-start;padding-bottom:18px}
- .overview-intro-actions{width:100%;justify-content:space-between}
  .site-footer{padding:0 15px 24px}
  .site-footer-inner{flex-direction:column;gap:12px;padding-top:19px}
  .site-footer h2{font-size:19px}
  .site-footer p{font-size:11px}
-}
-@media(max-width:420px){
- .overview-intro-actions{align-items:flex-start;gap:12px}
 }

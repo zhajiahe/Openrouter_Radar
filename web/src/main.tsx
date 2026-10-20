@@ -310,13 +310,6 @@ function App(){
     {error&&<Alert className="radar-alert" color="red" title="操作失败" role="alert">{error}<button type="button" className="alert-close" aria-label="关闭错误提示" onClick={()=>setError('')}><X size={17}/></button></Alert>}
     {message&&<Alert className="radar-alert" color="green" title="操作成功" role="status">{message}<button type="button" className="alert-close" aria-label="关闭成功提示" onClick={()=>setMessage('')}><X size={17}/></button></Alert>}
     {view==='overview'&&<>
-     <div className="overview-intro">
-      <span className="eyebrow">OPEN SOURCE · OPENROUTER DATA</span>
-      <div className="overview-intro-actions">
-       <span>每小时采集 · 无需访客 API Key</span>
-       <Button className="radar-cta" color="dark" size="sm" onClick={()=>setView('catalog')}>探索模型目录 <ArrowRight size={15}/></Button>
-      </div>
-     </div>
      <div className="metrics">
       {[{value:stats.models,label:'模型总数',icon:Layers,note:'目录内公开模型'},{value:stats.providers,label:'活跃 Provider',icon:Activity,note:'已发现的服务商'},{value:scanned,label:'已采集模型',icon:Radar,note:'Provider 快照覆盖量'},{value:stats.events24h,label:'24 小时事件',icon:History,note:'过去一天的真实变化'}].map(({value,label,icon:Icon,note})=>
        <div className="metric" key={label}><div className="metric-label"><Icon size={17} aria-hidden="true"/>{label}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
