@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { historyStatements, safeCollectionError } from '../src/history';
+import { historyStatements, missingHistoryStatements, safeCollectionError } from '../src/history';
 import type { Bindings } from '../src/types';
 import { parsePrices } from '../src/pricing';
 
@@ -24,4 +24,18 @@ test('public collection errors never leak upstream URLs or operator API keys',()
  assert.equal(safeCollectionError('abort: timed out'), 'Upstream request timed out');
  assert.equal(safeCollectionError('bad endpoint https://private.example/key=secret'), 'Upstream collection failed');
  assert.equal(safeCollectionError(null),null);
+});
+
+test('legacy price histories are seeded only when missing, with the actual scan timestamp',()=>{
+ const queries:{sql:string;args:unknown[]}[]=[];
+ const env={DB:{prepare:(sql:string)=>({bind:(...args:unknown[])=>{
+  queries.push({sql,args});return {sql,args};
+ }})}} as unknown as Bindings;
+ const price=parsePrices({prompt:'0.0000015',completion:'0.000003'});
+ const stmts=missingHistoryStatements(env,'ep1','author/model','Provider','provider',price,1792400000);
+ assert.equal(stmts.length,2);
+ assert.match(queries[0].sql,/NOT EXISTS/);
+ assert.equal(queries[0].args[6],1792400000);
+ assert.equal(queries[0].args[7],'ep1');
+ assert.equal(queries[1].args[8],'output');
 });
