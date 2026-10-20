@@ -13,6 +13,8 @@ import './component-library.css';
 import {PriceHistory,CompareModels} from './monitoring';
 import {AnalyticsDashboard} from './analytics';
 import {utcEventBounds} from './event-date';
+import {ProviderPriceStability} from './provider-stability';
+import {eventTitle,priceDimensionLabel} from '../../src/event-labels';
 
 type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number;model_kind?:string;lifecycle_status?:string};
 type ProviderOption={provider:string;model_count:number};
@@ -22,7 +24,7 @@ type Watch={id:string;model_id:string;name:string;provider:string|null;price_dim
 type Event={id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number};
 type Notice=Event&{id:string;status:string;read_at:number|null;sent_at:number|null;created_at:number};
 const EVENTS=[
- ['price.decreased','价格下降'],['price.increased','价格上涨'],['image.price_decreased','图片计费降价'],['image.price_increased','图片计费涨价'],['image.price_policy_changed','图片计费规则变化'],['model.added','模型上架'],['model.removed','模型下架'],['model.restored','模型恢复'],['endpoint.added','新 Provider'],['endpoint.removed','端点下线'],['endpoint.restored','端点恢复'],['price.policy_changed','定价规则变化'],['model.context_changed','上下文变化'],['model.capability_changed','模型能力变化'],['model.alias_changed','别名目标变化'],['model.expiration_changed','到期日期变化'],['model.expiring','即将到期']
+ ['price.decreased','所有维度的价格下降'],['price.increased','所有维度的价格上涨'],['image.price_decreased','图片价格下降（所有计费项）'],['image.price_increased','图片价格上涨（所有计费项）'],['image.price_policy_changed','图片计费规则变化'],['model.added','模型上架'],['model.removed','模型下架'],['model.restored','模型恢复'],['endpoint.added','新 Provider'],['endpoint.removed','端点下线'],['endpoint.restored','端点恢复'],['price.policy_changed','定价规则变化'],['model.context_changed','上下文变化'],['model.capability_changed','模型能力变化'],['model.alias_changed','别名目标变化'],['model.expiration_changed','到期日期变化'],['model.expiring','即将到期']
 ] as const;
 const DIMENSION_OPTIONS=[{value:'input',label:'输入 Token'},{value:'output',label:'输出 Token'},{value:'cache_read',label:'缓存读取'},{value:'cache_write',label:'缓存写入'},{value:'cache_write_1h',label:'缓存写入 1h'},{value:'input_audio_cache',label:'音频缓存'},{value:'internal_reasoning',label:'推理 Token'},{value:'image_token',label:'图片 Token'},{value:'audio_output',label:'音频输出'}];
 const label=(kind:string)=>EVENTS.find(e=>e[0]===kind)?.[1]||kind;
@@ -38,7 +40,7 @@ const extraPrice=(ep:Endpoint,field:string)=>{
 };
 const formatEvent=(e:Event):string=>{
  if(e.kind==='model.expiring')return '上游预计到期：进入 '+(e.new_price||'?')+' 天提醒窗口（不等于下架）';
- if(e.kind.startsWith('image.price_'))return (e.dimension||'图片计费项目')+'：'+(e.old_price??'未提供')+' → '+(e.new_price??'未提供')+' USD / 指定单位';
+ if(e.kind.startsWith('image.price_'))return priceDimensionLabel(e.dimension)+'：'+(e.old_price??'未提供')+' → '+(e.new_price??'未提供')+' USD / 指定单位';
  if(e.kind==='model.added')return '模型首次出现在已建立基准的目录中';
  if(e.kind==='model.removed')return '连续两次成功目录采集未找到该模型';
  if(e.kind==='model.restored')return '曾确认下架的模型重新出现';
@@ -51,7 +53,7 @@ const formatEvent=(e:Event):string=>{
  if(e.old_price!==null&&e.new_price!==null){
    const token=['input','output','cache_read','cache_write','cache_write_1h'].includes(e.dimension||'');
    const f=(v:string)=>token?million(v):v;
-   return (e.dimension||'价格')+': '+f(e.old_price)+' → '+f(e.new_price)+(token?' / 百万 Token':' / 原始计费单位');
+   return priceDimensionLabel(e.dimension)+': '+f(e.old_price)+' → '+f(e.new_price)+(token?' / 百万 Token':' / 原始计费单位');
  }
  return 'Provider 端点状态变化';
 };
@@ -401,9 +403,10 @@ function App(){
         {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="num">{extraPrice(ep,'input_cache_read')}</td><td className="num">{extraPrice(ep,'input_cache_write')}</td><td className="num">{extraPrice(ep,'input_cache_write_1h')}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
        </tbody></Table>{!providerEndpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
+       <ProviderPriceStability key={'stability-'+selected.id} modelId={selected.id}/>
        <PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>
        <div className="detail-section-head"><h3>最近变化</h3><small>仅记录基准建立后的实际变化</small></div>
-       <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
+       <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{eventTitle(ev.kind,ev.dimension)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
         <label htmlFor="watch-provider">Provider</label>
         <Select id="watch-provider" searchable clearable placeholder="所有 Provider" value={watchProvider||null} onChange={v=>setWatchProvider(v||"")} data={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=>({value:p,label:p}))}/>
@@ -434,7 +437,7 @@ function App(){
       {watches.length?<div className="watch-grid">{watches.map(w=><div className={'watch-card '+(w.paused?'is-paused':'')} key={w.id}><div>
        <div className="watch-topline"><span className="light-tag">{w.provider||'所有 Provider'}</span><span className={w.paused?'tag':'light-tag'}>{w.paused?'已暂停':'监控中'}</span></div>
        <h3>{w.name}</h3><code>{w.model_id}</code><p>{JSON.parse(w.events_json).map(label).join(' · ')}</p>
-       <small>{w.price_dimension?'维度 '+w.price_dimension+' · ':''}阈值 {w.threshold_pct}% · {w.frequency==='daily'?'每日摘要（UTC 08:00）':'尽快通知'}</small>
+       <small>{w.price_dimension?'维度 '+priceDimensionLabel(w.price_dimension)+' · ':''}阈值 {w.threshold_pct}% · {w.frequency==='daily'?'每日摘要（UTC 08:00）':'尽快通知'}</small>
        <div className="watch-delivery"><span>最近命中：{w.last_hit?time(w.last_hit):'尚无'}</span><span>最近邮件：{w.last_sent?time(w.last_sent):'尚无'}</span>
         <span>发送状态：{w.latest_status||'无通知'}{w.frequency==='daily'&&!w.paused?' · 下一摘要窗口 UTC 08:00':''}</span></div>
        {editingWatch===w.id&&<div className="watch-editor">
@@ -453,7 +456,7 @@ function App(){
     </>}
     {view==='notices'&&<><div className="page-heading"><div><div className="eyebrow">YOUR ALERTS</div><h1>{"通知中心"}</h1><p>站内记录每次命中订阅规则的事件，邮件发送状态同步展示。</p></div></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">{notices.length?notices.map(n=><div className={'notice '+(!n.read_at?'unread':'')} key={n.id}>
-      <div><div className="notice-title">{label(n.kind)} <span className="tag">{n.status==='sent'?'邮件已发':n.status==='failed'?'发送失败':'待发送'}</span></div><strong>{n.model_id}</strong><p>{n.provider} · {formatEvent(n)}</p><small>{time(n.created_at)}</small></div>
+      <div><div className="notice-title">{eventTitle(n.kind,n.dimension)} <span className="tag">{n.status==='sent'?'邮件已发':n.status==='failed'?'发送失败':'待发送'}</span></div><strong>{n.model_id}</strong><p>{n.provider} · {formatEvent(n)}</p><small>{time(n.created_at)}</small></div>
       {!n.read_at&&<button className="text-action" onClick={()=>void readNotice(n.id)}>标为已读</button>}
      </div>):<div className="empty roomy">暂时没有通知，模型价格有变化时这里会出现记录。</div>}</div>}
     </>}
@@ -483,7 +486,7 @@ function App(){
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
  return <div className="panel table-panel"><div className="mobile-table-hint">向左滑动查看变动明细与发现时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
- {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'?'teal':e.kind==='price.increased'?'red':'gray'}>{label(e.kind)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell">{time(e.created_at)}</td></tr>)}
+ {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'||e.kind==='image.price_decreased'?'teal':e.kind==='price.increased'||e.kind==='image.price_increased'?'red':'gray'}>{eventTitle(e.kind,e.dimension)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell">{time(e.created_at)}</td></tr>)}
  </tbody></Table>{!data.length&&<div className="empty roomy">还没有实际变化事件。首次采集只建立基准。</div>}</div></div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

@@ -63,3 +63,14 @@ html[data-theme="dark"]{
 
 .chart-dimensions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
 .chart-dimensions span{border:1px solid var(--border-default,var(--border));border-radius:999px;padding:4px 9px;font-size:12px;color:var(--text-secondary,var(--muted))}
+
+/* Price-only Provider comparison; keep the table in its scroll container on mobile. */
+.provider-stability{margin-top:18px}
+.provider-stability .historic-controls{margin-block:12px}
+.provider-stability-table{white-space:nowrap}
+.provider-stability-table td:first-child{white-space:normal;min-width:150px}
+.stability-muted,.stability-note{color:var(--radar-text-muted)}
+.stability-muted{display:block;font-size:11px;margin-top:3px}
+.stability-up{color:var(--chart-up)}
+.stability-down{color:var(--chart-down)}
+.stability-note{font-size:11px;line-height:1.65;margin:12px 0 0}
