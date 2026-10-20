@@ -310,15 +310,11 @@ function App(){
     {error&&<Alert className="radar-alert" color="red" title="操作失败" role="alert">{error}<button type="button" className="alert-close" aria-label="关闭错误提示" onClick={()=>setError('')}><X size={17}/></button></Alert>}
     {message&&<Alert className="radar-alert" color="green" title="操作成功" role="status">{message}<button type="button" className="alert-close" aria-label="关闭成功提示" onClick={()=>setMessage('')}><X size={17}/></button></Alert>}
     {view==='overview'&&<>
-     <div className="hero">
-      <div className="hero-copy">
-       <div className="eyebrow">OPEN SOURCE · OPENROUTER DATA</div>
-       <h1>Model prices,<br/><span className="accent">under your radar.</span></h1>
-       <p>{"模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。浏览公开数据，订阅你在意的变动。"}</p>
-       <div className="hero-actions">
-        <Button className="radar-cta" color="dark" onClick={()=>setView('catalog')}>探索模型目录 <ArrowRight size={16}/></Button>
-        <span className="hero-secondary">{"每小时采集 · 无需访客 API Key"}</span>
-       </div>
+     <div className="overview-intro">
+      <span className="eyebrow">OPEN SOURCE · OPENROUTER DATA</span>
+      <div className="overview-intro-actions">
+       <span>每小时采集 · 无需访客 API Key</span>
+       <Button className="radar-cta" color="dark" size="sm" onClick={()=>setView('catalog')}>探索模型目录 <ArrowRight size={15}/></Button>
       </div>
      </div>
      <div className="metrics">
@@ -476,6 +472,15 @@ function App(){
     </>}
    </div>
   </main>
+  <footer className="site-footer" aria-label="网站页脚">
+    <div className="site-footer-inner">
+     <div className="site-footer-copy">
+      <h2>Model prices, <span>under your radar.</span></h2>
+      <p>模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。浏览公开数据，订阅你在意的变动。</p>
+     </div>
+     <a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">GitHub <ExternalLink size={13} aria-hidden="true"/></a>
+    </div>
+  </footer>
  </div>
  <Modal opened={deleteWatchId!==null} onClose={()=>setDeleteWatchId(null)} title="删除订阅规则" centered size="sm">
   <p className="modal-description">删除后将停止匹配和发送这条规则的提醒，此操作不可撤销。</p>
