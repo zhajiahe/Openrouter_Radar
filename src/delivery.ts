@@ -48,8 +48,8 @@ export async function deliverPending(env:Bindings):Promise<number>{
   }catch(error){
    const info=String(error).match(/Resend HTTP \d{3}/)?.[0]||'Delivery failed';
    await env.DB.batch(rows.map(item=>env.DB.prepare(
-    "UPDATE notifications SET attempts=attempts+1,next_attempt_at=?,status=CASE WHEN attempts+1>=5 THEN 'failed' ELSE 'pending' END,last_error=? WHERE id=? AND status='sending'")
-    .bind(now()+Math.min(3600,60*2**Math.min(item.frequency==='daily'?2:2,5)),info,item.id)));
+    "UPDATE notifications SET attempts=attempts+1,next_attempt_at=?+min(3600,60*(1 << min(attempts+1,6))),status=CASE WHEN attempts+1>=5 THEN 'failed' ELSE 'pending' END,last_error=? WHERE id=? AND status='sending'")
+    .bind(now(),info,item.id)));
   }
  }
  // Release claimed notifications not sent because of per-alarm group cap.

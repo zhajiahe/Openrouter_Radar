@@ -215,17 +215,14 @@ export function stableEndpointKey(provider:string,tag:string):string{
 }
 export async function collectModel(env:Bindings,modelId:string,fetcher:typeof listEndpoints=listEndpoints,
  imageFetcher:typeof listImageEndpoints=listImageEndpoints):Promise<void>{
- const current=now(),lease=await env.DB.prepare('UPDATE collection_jobs SET leased_until=? WHERE model_id=? AND leased_until<?')
-  .bind(current+180,modelId,current).run();
- if(!lease.meta.changes)return;
+ // RadarScheduler is the single owner of global scans; avoid an extra
+ // lease row write for every unchanged Provider each hour.
+ const current=now();
  try{
   if(!env.OPENROUTER_API_KEY)throw new Error('OPENROUTER_API_KEY is not configured');
   const model=await env.DB.prepare('SELECT model_kind,lifecycle_status FROM models WHERE id=?').bind(modelId)
    .first<{model_kind:string;lifecycle_status:string}>();
-  if(!model||model.lifecycle_status==='removed'){
-   await env.DB.prepare('UPDATE collection_jobs SET leased_until=0 WHERE model_id=?').bind(modelId).run();
-   return;
-  }
+  if(!model||model.lifecycle_status==='removed')return;
   const isImage=model.model_kind==='image';
   const items: (UpstreamEndpoint|UpstreamImageEndpoint)[]=isImage
    ?await imageFetcher(modelId,env.OPENROUTER_API_KEY)
@@ -288,10 +285,10 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
    if(count===2)stmts.push(event(env,row.id,modelId,row.provider,'endpoint.removed',null,null,null,null,current));
    await env.DB.batch(stmts);
   }
-  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,last_success=?,leased_until=0,last_error=NULL WHERE model_id=?')
+  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,last_success=?,last_error=NULL WHERE model_id=?')
    .bind(current,current,modelId).run();
  }catch(e){
-  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=? WHERE model_id=?')
+  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,last_error=? WHERE model_id=?')
    .bind(current,String(e).slice(0,200),modelId).run();
  }
 }
