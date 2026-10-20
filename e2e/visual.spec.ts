@@ -128,10 +128,24 @@ for(const width of [375,390]){
    await goto(page);
    const nav=page.getByRole('navigation',{name:'主要导航'});
    const navDimensions=await nav.evaluate(el=>({content:el.scrollWidth,visible:el.clientWidth}));
-   if(!baseline)expect(navDimensions.content).toBeGreaterThan(navDimensions.visible);
+   if(!baseline){
+    expect(navDimensions.content).toBeGreaterThan(navDimensions.visible);
+    await page.getByRole('button',{name:'向右滚动导航'}).tap();
+    await expect.poll(()=>nav.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
+   }
    await nav.getByRole('button',{name:'通知'}).tap();
    await expect(page.getByRole('heading',{name:'通知中心'})).toBeVisible();
    await nav.getByRole('button',{name:'Models'}).tap();
+   if(!baseline){
+    const advanced=page.getByRole('button',{name:/筛选条件/});
+    await expect(advanced).toBeVisible();
+    await expect(page.locator('#catalog-filter-contents')).toBeHidden();
+    await advanced.tap();
+    await expect(page.locator('#catalog-filter-contents')).toBeVisible();
+    await capture(page,`${width}/mobile-filters-expanded.png`);
+    await advanced.tap();
+    await expect(page.locator('#catalog-filter-contents')).toBeHidden();
+   }
    await page.locator('.model-main').filter({hasText:'GPT 5.6'}).tap();
    await expect(page.locator('.detail-panel')).toContainText(MODEL_ID);
    await page.waitForTimeout(250);
