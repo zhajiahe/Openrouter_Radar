@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Bindings } from './types';
-import { runCollection } from './collector';
+import { runCollection, runHousekeeping } from './collector';
 import { deliverPending } from './delivery';
 
 /**
@@ -10,6 +10,9 @@ import { deliverPending } from './delivery';
 export const ALARM_INTERVAL_MS=60_000;
 
 export class RadarScheduler extends DurableObject<Bindings> {
+ // DO events may interleave across awaits. Prevent overlapping alarm scans
+ // without writing per-model D1 leases on every tick.
+ private scanning=false;
  async fetch(_request: Request): Promise<Response> {
   const current=Date.now();
   const next=await this.ctx.storage.getAlarm();
@@ -35,11 +38,22 @@ export class RadarScheduler extends DurableObject<Bindings> {
  async alarm(): Promise<void> {
   // Arm the next alarm first, including when upstream errors occur.
   await this.ctx.storage.setAlarm(Date.now()+ALARM_INTERVAL_MS);
+  if(this.scanning)return;
+  this.scanning=true;
   try {
    await runCollection(this.env);
+   // DO storage (not D1) tracks completion and retries on the next alarm
+   // when housekeeping fails. The UTC-day boundary matches D1 quotas.
+   const day=Math.floor(Date.now()/86_400_000);
+   if((await this.ctx.storage.get<number>('housekeepingDay'))!==day){
+    await runHousekeeping(this.env);
+    await this.ctx.storage.put('housekeepingDay',day);
+   }
    await deliverPending(this.env);
   } catch (error) {
    console.error('Radar scheduler failed, will retry on next alarm',error);
+  } finally {
+   this.scanning=false;
   }
  }
 }

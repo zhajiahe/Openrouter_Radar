@@ -44,18 +44,13 @@ export async function deliverPending(env:Bindings):Promise<number>{
   const key='radar-'+Array.from(new Uint8Array(digest)).map(n=>n.toString(16).padStart(2,'0')).join('');
   try{
    await sendEmail(env,rows[0].email,subject,notificationText(rows,env.APP_ORIGIN),key);
-   for(const item of rows){
-    await env.DB.prepare("UPDATE notifications SET status='sent',sent_at=?,last_error=NULL WHERE id=? AND status='sending'").bind(now(),item.id).run();
-   }
+   await env.DB.batch(rows.map(item=>env.DB.prepare("UPDATE notifications SET status='sent',sent_at=?,last_error=NULL WHERE id=? AND status='sending'").bind(now(),item.id)));
    count+=rows.length;
   }catch(error){
    const info=String(error).match(/Resend HTTP \d{3}/)?.[0]||'Delivery failed';
-   for(const item of rows){
-    const attempts=await env.DB.prepare('SELECT attempts FROM notifications WHERE id=?').bind(item.id).first<{attempts:number}>();
-    const next=(attempts?.attempts||0)+1;
-    await env.DB.prepare("UPDATE notifications SET attempts=?,next_attempt_at=?,status=?,last_error=? WHERE id=? AND status='sending'")
-     .bind(next,now()+Math.min(3600,60*2**next),next>=5?'failed':'pending',info,item.id).run();
-   }
+   await env.DB.batch(rows.map(item=>env.DB.prepare(
+    "UPDATE notifications SET attempts=attempts+1,next_attempt_at=?+min(3600,60*(1 << min(attempts+1,6))),status=CASE WHEN attempts+1>=5 THEN 'failed' ELSE 'pending' END,last_error=? WHERE id=? AND status='sending'")
+    .bind(now(),info,item.id)));
   }
  }
  // Release claimed notifications not sent because of per-alarm group cap.
