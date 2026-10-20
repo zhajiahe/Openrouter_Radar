@@ -210,8 +210,12 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
   const seen=new Set<string>(),initial=existing.results.filter(r=>r.status!=='superseded').length===0;
   const assigned=new Set<string>();
   for(const item of items){
-   const provider=item.provider_name,tag=('provider_tag' in item?item.provider_tag:undefined)||('tag' in item?item.tag:undefined)||'';
-   const slug=('provider_slug' in item?item.provider_slug:undefined)||provider;
+   const provider=item.provider_name;
+   const rawTag='provider_tag' in item?item.provider_tag:undefined;
+   const rawFallback='tag' in item?item.tag:undefined;
+   const tag=typeof rawTag==='string'&&rawTag?rawTag:typeof rawFallback==='string'?rawFallback:'';
+   const rawSlug='provider_slug' in item?item.provider_slug:undefined;
+   const slug=typeof rawSlug==='string'&&rawSlug?rawSlug:provider;
    const key=stableEndpointKey(slug,tag);
    // Legacy database keys can include quantization/tier/name. Reuse their IDs
    // to retain historical events and price points rather than rekeying FKs.
