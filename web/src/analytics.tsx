@@ -15,7 +15,7 @@ const dateLabel=(value:string)=>new Date(value+'T00:00:00Z').toLocaleDateString(
 const number=(value:number)=>value.toLocaleString('zh-CN');
 const kindLabel=(kind:string)=>kind==='image'?'图片模型':kind==='standard'?'常规模型':kind==='other'?'其他模型':kind;
 
-export function AnalyticsDashboard(){
+export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(date:string)=>void;onSelectProvider:(provider:string)=>void}){
  const [days,setDays]=useState<7|30>(7);
  const [data,setData]=useState<AnalyticsData|null>(null);
  const [loading,setLoading]=useState(true);
@@ -68,10 +68,10 @@ export function AnalyticsDashboard(){
   <div className="analytics-grid">
    <section className="chart-panel chart-panel-wide" aria-labelledby="activity-title">
     <div className="chart-panel-heading">
-     <div><span className="chart-kicker">SIGNAL FLOW</span><h3 id="activity-title">每日变动趋势</h3><p>按发现日期统计的真实事件，不补造缺失数据</p></div>
+     <div><span className="chart-kicker">SIGNAL FLOW</span><h3 id="activity-title">每日变动趋势</h3><p>按 UTC 日期统计的真实事件 · 点击柱条查看明细</p></div>
      <div className="chart-total"><strong>{data?number(totalEvents):'—'}</strong><span>事件</span></div>
     </div>
-    {data?<ActivityChart points={data.daily}/>:<ChartPlaceholder loading={loading}/>}
+    {data?<ActivityChart points={data.daily} onSelectDay={onSelectDay}/>:<ChartPlaceholder loading={loading}/>}
     <div className="chart-legend">{SERIES.map(s=><span key={s.key}><i style={{background:s.color}}/>{s.label}</span>)}</div>
    </section>
    <section className="chart-panel chart-panel-mix" aria-labelledby="mix-title">
@@ -79,15 +79,15 @@ export function AnalyticsDashboard(){
     {data?<ModelDonut data={data.modelKinds}/>:<ChartPlaceholder loading={loading}/>}
    </section>
    <section className="chart-panel chart-panel-providers" aria-labelledby="provider-title">
-    <div className="chart-panel-heading"><div><span className="chart-kicker">PROVIDER COVERAGE</span><h3 id="provider-title">活跃 Provider 排名</h3><p>按当前覆盖模型数量排序 · 前 6 名</p></div><span className="ranking-icon">↗</span></div>
-    {data?<ProviderBars data={data.topProviders}/>:<ChartPlaceholder loading={loading}/>}
+    <div className="chart-panel-heading"><div><span className="chart-kicker">PROVIDER COVERAGE</span><h3 id="provider-title">活跃 Provider 排名</h3><p>按当前覆盖模型数量排序 · 点击 Provider 查看事件</p></div><span className="ranking-icon">↗</span></div>
+    {data?<ProviderBars data={data.topProviders} onSelectProvider={onSelectProvider}/>:<ChartPlaceholder loading={loading}/>}
    </section>
   </div>
   <div className="analytics-footnote"><span>◉</span> 数据来自 Radar 的生产目录与事件记录 · 每分钟自动刷新{data?.days?' · UTC 日期聚合':''}</div>
  </section>;
 }
 
-function ActivityChart({points}:{points:DailyPoint[]}){
+function ActivityChart({points,onSelectDay}:{points:DailyPoint[];onSelectDay:(date:string)=>void}){
  const [active,setActive]=useState<number|null>(null);
  const width=760,height=254,left=36,right=12,top=14,bottom=32;
  const plotWidth=width-left-right,plotHeight=height-top-bottom;
@@ -102,7 +102,7 @@ function ActivityChart({points}:{points:DailyPoint[]}){
  const hovered=active===null?null:points[active];
  return <div className="activity-chart">
   <div className="activity-hover-readout">
-   <div><span className="readout-dot"/><span>{hovered?dateLabel(hovered.date):'选择任意日期查看详情'}</span></div>
+   <div><span className="readout-dot"/><span>{hovered?dateLabel(hovered.date):'悬停预览 · 点击日期查看事件'}</span></div>
    <strong>{hovered?number(hovered.total)+' 个事件':'—'}</strong>
    {hovered&&<small>涨价 {hovered.priceUp} · 降价 {hovered.priceDown} · 生命周期 {hovered.lifecycle} · 其他 {hovered.other}</small>}
   </div>
@@ -119,7 +119,7 @@ function ActivityChart({points}:{points:DailyPoint[]}){
      return <rect key={series.key} x={x} y={barY} width={barWidth} height={Math.max(0,barH)} rx="2.5" fill={series.color} className="chart-stack-bar"/>;
     });
     const isActive=active===index;
-    return <g key={point.date} tabIndex={0} role="button" aria-label={point.date+'，'+point.total+' 个事件'} onMouseEnter={()=>setActive(index)} onMouseLeave={()=>setActive(null)} onFocus={()=>setActive(index)} onBlur={()=>setActive(null)} className={isActive?'chart-column is-active':'chart-column'}>
+    return <g key={point.date} tabIndex={0} role="button" aria-label={point.date+'，'+point.total+' 个事件，点击查看明细'} onClick={()=>onSelectDay(point.date)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelectDay(point.date);}}} onMouseEnter={()=>setActive(index)} onMouseLeave={()=>setActive(null)} onFocus={()=>setActive(index)} onBlur={()=>setActive(null)} className={isActive?'chart-column is-active':'chart-column'}>
      <rect x={left+index*step} y={top} width={step} height={plotHeight} fill={isActive?'var(--chart-hover)':'transparent'}/>
      {point.total>0&&<line x1={x+barWidth/2} x2={x+barWidth/2} y1={y(point.total)} y2={top+plotHeight} className="chart-bar-stem"/>}
      {bars}
@@ -156,14 +156,14 @@ function ModelDonut({data}:{data:ModelKind[]}){
  </div>;
 }
 
-function ProviderBars({data}:{data:ProviderRank[]}){
+function ProviderBars({data,onSelectProvider}:{data:ProviderRank[];onSelectProvider:(provider:string)=>void}){
  const max=Math.max(1,...data.map(item=>item.models));
  return <div className="provider-bars">
-  {data.length?data.map((item,index)=><div className="provider-bar-row" key={item.provider}>
+  {data.length?data.map((item,index)=><button type="button" className="provider-bar-row" key={item.provider} onClick={()=>onSelectProvider(item.provider)} aria-label={'查看 '+item.provider+' 的相关监控事件'} title={'查看 '+item.provider+' 的监控事件'}>
    <div className="provider-bar-label"><span className="provider-rank">{String(index+1).padStart(2,'0')}</span><strong title={item.provider}>{item.provider}</strong><span>{number(item.models)} 模型</span></div>
    <div className="provider-bar-track" role="img" aria-label={item.provider+' 覆盖 '+item.models+' 个模型和 '+item.endpoints+' 个端点'}><div className="provider-bar-fill" style={{width:(item.models/max*100)+'%',animationDelay:(index*65)+'ms'}}/></div>
    <div className="provider-bar-meta"><span>{number(item.endpoints)} 个端点</span><span>{Math.round(item.models/max*100)}%</span></div>
-  </div>):<div className="chart-empty">暂无活跃 Provider 数据</div>}
+  </button>):<div className="chart-empty">暂无活跃 Provider 数据</div>}
  </div>;
 }
 

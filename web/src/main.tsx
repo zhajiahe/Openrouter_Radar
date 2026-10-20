@@ -6,6 +6,7 @@ import './monitoring.css';
 import './preferences.css';
 import {PriceHistory,CompareModels} from './monitoring';
 import {AnalyticsDashboard} from './analytics';
+import {utcEventBounds} from './event-date';
 
 type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number;model_kind?:string;lifecycle_status?:string};
 type ProviderOption={provider:string;model_count:number};
@@ -117,12 +118,19 @@ function App(){
    setModels(r.data);setModelTotal(r.total);
   }catch(e){setError((e as Error).message);}finally{setModelLoading(false);}
  }
+ function openEventDrilldown(filter:{day?:string;provider?:string}){
+  setEventSearch('');setEventKind('');setEventPage(1);
+  setEventStart(filter.day||'');setEventEnd(filter.day||'');
+  setEventProvider(filter.provider||'');
+  setView('events');
+  window.scrollTo({top:0,behavior:'auto'});
+ }
  async function loadEvents(q:string,kind:string,p:number,provider:string,start:string,end:string){
   setLoadingEvents(true);
   try{
    const params=new URLSearchParams({q,kind,page:String(p),limit:'30',provider});
-   if(start)params.set('start',String(Math.floor(new Date(start+'T00:00:00').getTime()/1000)));
-   if(end)params.set('end',String(Math.floor(new Date(end+'T23:59:59').getTime()/1000)));
+   if(start){const bounds=utcEventBounds(start);if(bounds)params.set('start',String(bounds.start));}
+   if(end){const bounds=utcEventBounds(end);if(bounds)params.set('end',String(bounds.end));}
    const r=await api<{data:Event[];total:number}>('/events?'+params.toString());
    setEvents(r.data);setEventTotal(r.total);
   }catch(e){setError((e as Error).message);}finally{setLoadingEvents(false);}
@@ -287,7 +295,7 @@ function App(){
       {[[stats.models,'模型总数','▦','目录内的公开模型'],[stats.providers,'活跃 Provider','◇','已发现的服务商'],[scanned,'已采集模型','◉','Provider 快照覆盖量'],[stats.events24h,'24小时事件','↗','过去一天的真实变化']].map(([value,labelText,icon,note])=>
        <div className="metric" key={String(labelText)}><div className="metric-label"><span aria-hidden="true">{icon}</span>{labelText}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
      </div>
-     <AnalyticsDashboard />
+     <AnalyticsDashboard onSelectDay={day=>openEventDrilldown({day})} onSelectProvider={provider=>openEventDrilldown({provider})}/>
      <div className="section-head"><div><h2>Recent changes</h2><p className="section-heading-sub">{"仅展示实际发现的变化，不生成模拟数据"}</p></div><button className="text-action" onClick={()=>setView('events')}>{"全部事件"} ↗</button></div>
      <div className="overview-grid">
       <EventsTable data={recentEvents.slice(0,8)}/>
@@ -359,7 +367,7 @@ function App(){
         {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.status==='superseded'?'已合并的旧端点':ep.tag||'Active'}</small></td><td className="num">{ep.pricing_json.includes('image_pricing')?'按图片独立计价':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'详见计费项目':endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
        </tbody></table>{!endpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
-       {selected.model_kind==='image'?<div className="empty">图片模型采用按张、百万像素或 Token 等不同计费单位。上方查看 Provider 的原始计费项目；下方事件历史记录同单位的真实报价变化，不使用 Token 价格曲线。</div>:<PriceHistory modelId={selected.id} providers={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))]}/>}
+       <PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>
        <div className="detail-section-head"><h3>Recent changes</h3><small>仅记录首次快照后的实际变化</small></div>
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>

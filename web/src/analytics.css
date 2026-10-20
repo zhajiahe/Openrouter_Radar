@@ -86,6 +86,10 @@ html[data-theme="dark"]{
 .ranking-icon{display:grid;place-items:center;width:29px;height:29px;border:1px solid var(--radar-border);border-radius:9px;color:var(--chart-down);font-size:14px;background:var(--radar-surface-soft)}
 .provider-bars{display:flex;flex-direction:column;gap:13px;padding-top:6px}
 .provider-bar-row{min-width:0;animation:analytics-appear .45s both}
+.provider-bar-row{display:block;text-align:left;width:100%;border:1px solid transparent;border-radius:9px;padding:7px;background:transparent;color:inherit;cursor:pointer;transition:background-color .16s,border-color .16s}
+.provider-bar-row:hover,.provider-bar-row:focus-visible{background:var(--radar-surface-soft);border-color:var(--radar-border);outline:none}
+.provider-bar-row:focus-visible{box-shadow:0 0 0 2px var(--radar-focus-shadow)}
+.provider-bar-row:hover .provider-bar-fill,.provider-bar-row:focus-visible .provider-bar-fill{filter:brightness(1.08)}
 .provider-bar-label{display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:8px;margin-bottom:7px}
 .provider-rank{font-size:9px;color:var(--radar-text-tertiary);font-variant-numeric:tabular-nums}
 .provider-bar-label strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--radar-text);font-size:11px;font-weight:680}
@@ -138,3 +142,6 @@ html[data-theme="dark"]{
 @media(prefers-reduced-motion:reduce){
  .analytics-shell *, .analytics-shell *::before,.analytics-shell *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
 }
+
+.chart-column{cursor:pointer}
+.chart-column:hover rect.chart-stack-bar,.chart-column:focus-visible rect.chart-stack-bar{filter:brightness(1.13)}
