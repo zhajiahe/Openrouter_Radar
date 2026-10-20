@@ -28,7 +28,7 @@
 .search-field>.mantine-TextInput-root{flex:1;min-width:0;width:100%}
 .search-field .mantine-Input-input{padding-inline-start:38px;padding-inline-end:46px}
 .sort-field .mantine-Select-root{width:178px}
-.filter-panel>.mantine-Select-root,.filter-panel>.mantine-TextInput-root,.filter-panel>.mantine-NumberInput-root{
+.filter-contents>.mantine-Select-root,.filter-contents>.mantine-TextInput-root,.filter-contents>.mantine-NumberInput-root{
   width:100%;
   margin-bottom:14px;
 }
@@ -144,3 +144,38 @@ html[data-theme="dark"] .pager .mantine-Pagination-control[data-active]{backgrou
  .layout .detail-quick-stats>div{padding:10px}
  .layout .nav-link{gap:6px}
 }
+
+
+/* Small-screen discovery: visible navigation cue and compact filter disclosure. */
+.nav-more,.filter-toggle,.mobile-table-hint{display:none}
+.filter-contents{display:block}
+@media(max-width:720px){
+ .sidebar .nav-more{
+  display:grid;place-items:center;flex:none;width:31px;height:33px;
+  padding:0;border:1px solid var(--radar-border);border-radius:7px;
+  background:var(--radar-surface);color:var(--radar-text-muted);
+ }
+ .sidebar nav{flex:1;min-width:0;overscroll-behavior-inline:contain}
+ .filter-desktop-heading{display:none}
+ .catalog-grid .filter-panel{min-height:0;padding:10px 8px 14px;border-bottom:1px solid var(--radar-border)!important}
+ .filter-toggle{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+  min-height:44px;padding:9px 4px;border:0;background:transparent;
+  color:var(--radar-text);font-size:13px;font-weight:700;text-align:left;
+ }
+ .filter-toggle>span{display:inline-flex;align-items:center;gap:8px}
+ .filter-toggle>svg{transition:transform 150ms ease}
+ .filter-toggle>svg.open{transform:rotate(180deg)}
+ .filter-contents{display:none;padding-top:12px}
+ .filter-contents.is-open{display:block}
+ .catalog-grid>.detail-panel{min-height:0}
+ .catalog-grid>.detail-panel .selection-empty{padding:26px 12px}
+ .catalog-grid>.detail-panel .selection-empty>span{width:45px;height:45px;border-radius:12px}
+ .catalog-grid>.detail-panel .selection-empty h3{margin-top:13px}
+ .mobile-table-hint{
+  display:flex;justify-content:flex-end;align-items:center;gap:5px;
+  padding:8px 10px 6px;color:var(--radar-text-muted);font-size:11px;
+ }
+ .table-panel .mobile-table-hint{padding-inline:12px}
+}
+@media(prefers-reduced-motion:reduce){.filter-toggle>svg{transition:none}}

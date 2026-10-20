@@ -13,7 +13,9 @@
     "db:remote": "wrangler d1 migrations apply DB --remote",
     "lint": "eslint src tests web/src web/vite.config.ts",
     "format": "prettier --write src tests web/src web/vite.config.ts README.md CONTRIBUTING.md docs .github package.json eslint.config.mjs",
-    "format:check": "prettier --check eslint.config.mjs .prettierrc.json web/src/tokens.css docs/ui-design.md CONTRIBUTING.md .github/pull_request_template.md"
+    "format:check": "prettier --check eslint.config.mjs .prettierrc.json web/src/tokens.css docs/ui-design.md CONTRIBUTING.md .github/pull_request_template.md",
+    "test:visual": "playwright test --config playwright.config.ts",
+    "compare:visual": "node e2e/compare-screenshots.mjs"
   },
   "dependencies": {
     "hono": "^4.9.0",
@@ -40,6 +42,9 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "typescript-eslint": "^8.46.0",
     "prettier": "^3.6.2",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@playwright/test": "^1.56.1",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0"
   }
 }

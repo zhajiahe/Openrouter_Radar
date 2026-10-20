@@ -1,0 +1,80 @@
+name: Browser Visual QA
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "e2e/**"
+      - "playwright.config.ts"
+      - "package.json"
+      - ".github/workflows/visual-qa.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "e2e/**"
+      - "playwright.config.ts"
+      - "package.json"
+      - ".github/workflows/visual-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: Chromium · 375 / 390 / 768 / 1024 / 1440
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install application and test dependencies
+        run: npm install --no-fund
+      - name: Install real Chromium and required Linux libraries
+        run: npx playwright install --with-deps chromium
+
+      - name: Checkout main as visual reference
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: baseline
+      - name: Install reference frontend dependencies
+        if: github.event_name == 'pull_request'
+        run: npm install --prefix baseline --no-fund
+      - name: Capture baseline screenshots from main
+        if: github.event_name == 'pull_request'
+        env:
+          PLAYWRIGHT_APP_ROOT: baseline
+          VISUAL_CAPTURE_DIR: artifacts/baseline
+          VISUAL_CAPTURE_ONLY: "1"
+        run: npm run test:visual
+
+      - name: Verify current viewport layouts and browser interactions
+        env:
+          VISUAL_CAPTURE_DIR: artifacts/current
+        run: npm run test:visual
+      - name: Compare rendered screenshots with main
+        if: always() && github.event_name == 'pull_request'
+        run: npm run compare:visual
+      - name: Upload browser screenshots, pixel diffs and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-qa-${{ github.run_id }}
+          path: |
+            artifacts/current
+            artifacts/baseline
+            artifacts/diff
+            artifacts/visual-diff.md
+            artifacts/playwright-report
+            artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 14
