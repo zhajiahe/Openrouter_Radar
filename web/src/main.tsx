@@ -22,7 +22,10 @@ const million=(price:string|null)=>price===null?'—':'$'+(Number(price)*1e6).to
 const endpointPrice=(price:string|null)=>million(price);
 const formatEvent=(e:Event):string=>{
  if(e.kind==='model.expiring')return '距离到期最多 '+(e.new_price||'?')+' 天';
- if(e.kind==='price.policy_changed')return (e.dimension||'计价规则')+' 已发生变化';
+ if(e.kind==='price.policy_changed'){
+  if(e.dimension==='discount')return '折扣规则变化（不能直接视作降价）：'+(e.old_price||'未知')+' → '+(e.new_price||'未知');
+  return (e.dimension||'计价规则')+' 已发生变化';
+ }
  if(e.kind.startsWith('model.'))return (e.dimension||'模型属性')+'：'+(e.old_price||'未知').slice(0,90)+' → '+(e.new_price||'未知').slice(0,90);
  if(e.old_price!==null&&e.new_price!==null){
    const token=['input','output','cache_read','cache_write','cache_write_1h'].includes(e.dimension||'');
