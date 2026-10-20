@@ -27,7 +27,7 @@ export const english:Record<string,string>={
  '新 Provider':'New provider','端点下线':'Endpoint removed','端点恢复':'Endpoint restored',
  '定价规则变化':'Pricing policy changed','上下文变化':'Context changed',
  '模型能力变化':'Capabilities changed','别名目标变化':'Alias changed','到期日期变化':'Expiration changed',
- '事件类型':'Change type','全部事件':'All changes','所有 Provider':'All providers',
+ '事件类型':'Change type','所有 Provider':'All providers',
  '从':'From','到':'To','开始日期':'Start date','结束日期':'End date',
  '搜索模型 ID / Provider':'Search model or provider',
  '我的订阅':'My watchlist','每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。':'Each account can create up to 50 rules. Everyone shares the same source catalog.',
