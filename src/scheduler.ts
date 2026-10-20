@@ -8,7 +8,7 @@ import { readFreshStartPlan, clearCollectionHistory } from './fresh-start';
  * Single periodic scanner without account-level Cron Triggers.
  * Durable Object alarms are persisted and automatically wake the object.
  */
-export const ALARM_INTERVAL_MS = 60_000;
+export const ALARM_INTERVAL_MS=60_000;
 
 export class RadarScheduler extends DurableObject<Bindings> {
  // DO events may interleave across awaits. Prevent overlapping alarm scans
