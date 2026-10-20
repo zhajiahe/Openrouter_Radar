@@ -7,11 +7,11 @@ const baseline=path.resolve('artifacts/baseline');
 const current=path.resolve('artifacts/current');
 const diffDir=path.resolve('artifacts/diff');
 fs.mkdirSync(diffDir,{recursive:true});
-function files(dir){
+function files(dir,root=dir){
  if(!fs.existsSync(dir))return [];
  return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{
   const full=path.join(dir,e.name);
-  return e.isDirectory()?files(full):e.name.endsWith('.png')?[path.relative(dir===baseline?baseline:current,full)]:[];
+  return e.isDirectory()?files(full,root):e.name.endsWith('.png')?[path.relative(root,full)]:[];
  });
 }
 const pairs=files(current).sort();
