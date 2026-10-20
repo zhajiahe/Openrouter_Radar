@@ -128,11 +128,13 @@ export async function refreshImageCatalog(env:Bindings,fetcher:typeof listModels
 }
 
 async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
- const subs=await env.DB.prepare("SELECT s.id,s.user_id,s.provider,s.events_json,s.threshold_pct,s.frequency FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1 AND s.paused=0").bind(record.model_id)
-  .all<{id:string;user_id:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string}>();
+ const subs=await env.DB.prepare("SELECT s.id,s.user_id,s.provider,s.price_dimension,s.events_json,s.threshold_pct,s.frequency FROM subscriptions s JOIN users u ON u.id=s.user_id WHERE s.model_id=? AND u.email_verified=1 AND s.paused=0").bind(record.model_id)
+  .all<{id:string;user_id:string;provider:string|null;price_dimension:string|null;events_json:string;threshold_pct:number;frequency:string}>();
  const stmts:D1PreparedStatement[]=[];
  for(const sub of subs.results){
   if(sub.provider!==null&&sub.provider!==record.provider)continue;
+  if(sub.price_dimension&&record.kind.startsWith('price.')&&sub.price_dimension!==record.dimension)continue;
+  if(sub.price_dimension&&record.kind.startsWith('image.price_')&&sub.price_dimension!==record.dimension)continue;
   let selected:string[];try{selected=JSON.parse(sub.events_json);}catch{continue;}
   if(!selected.includes(record.kind))continue;
   if((record.kind==='price.increased'||record.kind==='price.decreased'||record.kind==='image.price_increased'||record.kind==='image.price_decreased')&&!thresholdMatches(record.change_pct,sub.threshold_pct))continue;

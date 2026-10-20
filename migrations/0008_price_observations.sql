@@ -16,3 +16,5 @@ INSERT OR IGNORE INTO price_observations(endpoint_id,model_id,provider,source,di
  SELECT endpoint_id,model_id,provider,source,dimension,'USD/token',price,observed_at FROM price_history;
 -- Fill newly supported dimensions at the next successful real Provider scan.
 UPDATE endpoints SET history_seeded=0 WHERE source='provider';
+-- Optional subscriber dimension; NULL continues to match every price dimension.
+ALTER TABLE subscriptions ADD COLUMN price_dimension TEXT;

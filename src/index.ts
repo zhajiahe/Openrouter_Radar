@@ -92,10 +92,10 @@ app.get('/api/models',async c=>{
  const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0,provider,provider] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,
-   (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL) AS lowest_input,
+   (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL AND (?='' OR e.provider=?)) AS lowest_input,
    (SELECT COUNT(DISTINCT e.provider) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active') AS provider_count
    FROM models m WHERE ${where} ORDER BY ${order[sort]||order.name} LIMIT ? OFFSET ?`)
-    .bind(...binds,limit,(page-1)*limit).all(),
+    .bind(provider,provider,...binds,limit,(page-1)*limit).all(),
   c.env.DB.prepare(`SELECT COUNT(*) AS total FROM models m WHERE ${where}`).bind(...binds).first<{total:number}>()
  ]);
  return c.json({data:rows.results,page,limit,total:count?.total||0});
@@ -205,7 +205,7 @@ app.get('/feed.xml',async c=>{
  return c.body(xml,200,{'Content-Type':'application/rss+xml; charset=utf-8'});
 });
 app.get('/api/subscriptions',requireAuth,async c=>{
- const rows=await c.env.DB.prepare(`SELECT s.id,s.model_id,m.name,s.provider,s.events_json,s.threshold_pct,s.frequency,s.paused,s.created_at,
+ const rows=await c.env.DB.prepare(`SELECT s.id,s.model_id,m.name,s.provider,s.price_dimension,s.events_json,s.threshold_pct,s.frequency,s.paused,s.created_at,
  (SELECT MAX(n.created_at) FROM notifications n WHERE n.subscription_id=s.id) AS last_hit,
  (SELECT MAX(n.sent_at) FROM notifications n WHERE n.subscription_id=s.id) AS last_sent,
  (SELECT n.status FROM notifications n WHERE n.subscription_id=s.id ORDER BY n.created_at DESC LIMIT 1) AS latest_status
@@ -216,6 +216,7 @@ app.get('/api/subscriptions',requireAuth,async c=>{
 const subSchema=z.object({
  model_id:z.string().min(3).max(200),
  provider:z.string().trim().max(150).nullable().optional(),
+ price_dimension:z.string().trim().max(200).nullable().optional(),
  events:z.array(z.enum(EVENT_KINDS as [typeof EVENT_KINDS[number],...typeof EVENT_KINDS[number][]])).min(1).max(EVENT_KINDS.length),
  threshold_pct:z.number().min(0).max(1000).default(0),
  frequency:z.enum(['instant','daily']).default('instant')
@@ -228,8 +229,8 @@ app.post('/api/subscriptions',requireAuth,async c=>{
  const model=await c.env.DB.prepare('SELECT id FROM models WHERE id=?').bind(parsed.data.model_id).first();
  if(!model)return c.json({error:'Unknown model; wait for initial catalogue sync'},404);
  const id=crypto.randomUUID();
- await c.env.DB.prepare(`INSERT INTO subscriptions(id,user_id,model_id,provider,events_json,threshold_pct,frequency,created_at)
-   VALUES(?,?,?,?,?,?,?,?)`).bind(id,c.get('userId'),parsed.data.model_id,parsed.data.provider||null,JSON.stringify(parsed.data.events),parsed.data.threshold_pct,parsed.data.frequency,now()).run();
+ await c.env.DB.prepare(`INSERT INTO subscriptions(id,user_id,model_id,provider,price_dimension,events_json,threshold_pct,frequency,created_at)
+   VALUES(?,?,?,?,?,?,?,?,?)`).bind(id,c.get('userId'),parsed.data.model_id,parsed.data.provider||null,parsed.data.price_dimension||null,JSON.stringify(parsed.data.events),parsed.data.threshold_pct,parsed.data.frequency,now()).run();
  return c.json({id},201);
 });
 app.patch('/api/subscriptions/:id',requireAuth,async c=>{
@@ -237,16 +238,17 @@ app.patch('/api/subscriptions/:id',requireAuth,async c=>{
   .safeParse(await c.req.json().catch(()=>null));
  if(!parsed.success)return c.json({error:'Invalid update',details:parsed.error.flatten().fieldErrors},400);
  const userId=c.get('userId'),id=c.req.param('id');
- const old=await c.env.DB.prepare('SELECT id,provider,events_json,threshold_pct,frequency,paused FROM subscriptions WHERE id=? AND user_id=?')
-  .bind(id,userId).first<{provider:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number}>();
+ const old=await c.env.DB.prepare('SELECT id,provider,price_dimension,events_json,threshold_pct,frequency,paused FROM subscriptions WHERE id=? AND user_id=?')
+  .bind(id,userId).first<{provider:string|null;price_dimension:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number}>();
  if(!old)return c.json({error:'Subscription not found'},404);
  const d=parsed.data;
  const provider=d.provider===undefined?old.provider:d.provider||null;
+ const priceDimension=d.price_dimension===undefined?old.price_dimension:d.price_dimension||null;
  const events=d.events===undefined?old.events_json:JSON.stringify(d.events);
  const threshold=d.threshold_pct??old.threshold_pct,frequency=d.frequency??old.frequency;
  const paused=d.paused===undefined?old.paused:(d.paused?1:0);
- await c.env.DB.prepare('UPDATE subscriptions SET provider=?,events_json=?,threshold_pct=?,frequency=?,paused=? WHERE id=? AND user_id=?')
-  .bind(provider,events,threshold,frequency,paused,id,userId).run();
+ await c.env.DB.prepare('UPDATE subscriptions SET provider=?,price_dimension=?,events_json=?,threshold_pct=?,frequency=?,paused=? WHERE id=? AND user_id=?')
+  .bind(provider,priceDimension,events,threshold,frequency,paused,id,userId).run();
  if(paused){
   await c.env.DB.prepare("UPDATE notifications SET status='suppressed' WHERE subscription_id=? AND user_id=? AND status IN ('pending','sending')")
    .bind(id,userId).run();

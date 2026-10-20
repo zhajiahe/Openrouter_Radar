@@ -90,6 +90,8 @@ The Durable Object alarm wakes each minute. The full model catalogue refreshes o
 
 ## Complete unit-aware price observations (2026-10-20)
 
+- Subscriptions accept optional `price_dimension` (such as `cache_read`) to restrict price-change alerts to that exact charge category; NULL preserves the all-dimensions behavior, and model lifecycle alerts remain unaffected.
+
 - `/api/v1/models?output_modalities=all` requests the full published modality catalog; dedicated image endpoints remain authoritative for per-image billing. Different catalog sources have distinct success watermarks.
 - Prices are stored in `price_observations` with `dimension`, `unit` and `observed_at`. The original two-dimension `price_history` table is retained for migration compatibility and its real rows are copied without altering timestamps.
 - New cache, audio, request, image and auxiliary dimensions are seeded only after a *successful actual Provider scan*; legacy history is not fabricated.
