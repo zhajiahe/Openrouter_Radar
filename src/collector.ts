@@ -266,7 +266,7 @@ export async function runCollection(env:Bindings):Promise<void>{
  try{await refreshCatalog(env);}catch{/* Catalog error remains visible in /api/health */}
  try{await refreshImageCatalog(env);}catch{/* Image catalogue retains its previous successful snapshot */}
  const count=modelsPerTick(env.MAX_MODELS_PER_TICK);
- const jobs=await env.DB.prepare('SELECT j.model_id FROM collection_jobs j JOIN models m ON m.id=j.model_id WHERE m.lifecycle_status='active' AND j.leased_until<? AND j.last_checked<? ORDER BY j.last_checked ASC,j.model_id ASC LIMIT ?')
+ const jobs=await env.DB.prepare("SELECT j.model_id FROM collection_jobs j JOIN models m ON m.id=j.model_id WHERE m.lifecycle_status='active' AND j.leased_until<? AND j.last_checked<? ORDER BY j.last_checked ASC,j.model_id ASC LIMIT ?")
   .bind(now(),now()-PROVIDER_INTERVAL_SECONDS,count).all<{model_id:string}>();
  // At most three upstream endpoint requests in flight at a time.
  for(let i=0;i<jobs.results.length;i+=3){
