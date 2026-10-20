@@ -16,7 +16,7 @@ test('hourly global scanner stays within per-invocation budget and ignores subsc
  assert.equal(modelsPerTick('-1'),15);
  assert.equal(modelsPerTick('bad number'),15);
  const collector=source('src/collector.ts');
- assert.match(collector,/FROM collection_jobs WHERE leased_until/);
+ assert.match(collector,/FROM collection_jobs j JOIN models m/);
  assert.doesNotMatch(collector,/collection_jobs j JOIN subscriptions/);
  assert.match(collector,/INSERT OR IGNORE INTO collection_jobs\(model_id\)/);
  const app=source('src/index.ts');
@@ -30,6 +30,7 @@ test('catalog creates collection jobs for all new models without a subscription'
   prepare(sql:string){
    return {sql,bind(...args:unknown[]){
     return {sql,args,
+     async first(){if(sql.includes('FROM sync_state'))return {last_success:0};throw new Error('Unexpected first: '+sql);},
      async run(){if(sql.includes('UPDATE sync_state SET last_success'))success=true;return {meta:{changes:1}};},
      async all(){if(sql.includes('FROM models WHERE id>?'))return {results:[]};throw new Error('Unexpected SQL: '+sql);}
     };
