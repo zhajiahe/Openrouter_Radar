@@ -168,13 +168,7 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
   :findPriceChanges(storedPrices(previous.pricing_json),prices);
  // A successful sweep is recorded on collection_jobs. Do not rewrite identical
  // endpoint rows every hour, which would exhaust D1 Free daily write limits.
- if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null)&&previous.provider===provider&&previous.tag===tag&&(!o.image||previous.pricing_json===JSON.stringify(raw))){
-  // Baseline newly supported dimensions after schema upgrade without manufacturing changes.
-  const baselines=o.image?imageHistoryStatements(env,id,modelId,provider,o.image,storedImageCharges(previous.pricing_json),ts)
-   :missingHistoryStatements(env,id,modelId,provider,source,prices,ts);
-  if(baselines.length)await env.DB.batch(baselines);
-  return;
- }
+ if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null)&&previous.provider===provider&&previous.tag===tag&&(!o.image||previous.pricing_json===JSON.stringify(raw)))return;
  const stmts:D1PreparedStatement[]=[
   env.DB.prepare("UPDATE endpoints SET provider=?,tag=?,input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1,stable_key=? WHERE id=?")
    .bind(provider,tag,prices.prompt,prices.completion,JSON.stringify(raw),ts,o.stableKey??null,id)
@@ -184,7 +178,7 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
   stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts,o.snapshotId??null));
  }
  if(o.image){
-  stmts.push(...imageHistoryStatements(env,id,modelId,provider,o.image,storedImageCharges(previous.pricing_json).length?storedImageCharges(previous.pricing_json):null,ts));
+  stmts.push(...imageHistoryStatements(env,id,modelId,provider,o.image,previous.history_seeded===1?storedImageCharges(previous.pricing_json):null,ts));
  }else{
   stmts.push(...(previous.history_seeded===1
    ?historyStatements(env,id,modelId,provider,source,prices,storedPrices(previous.pricing_json),ts)

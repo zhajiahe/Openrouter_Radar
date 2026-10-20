@@ -29,11 +29,11 @@ app.get('/api/health',async c=>{
  c.executionCtx.waitUntil(c.env.SCHEDULER.get(c.env.SCHEDULER.idFromName('global')).fetch('https://internal.scheduler/arm').catch(e=>console.error('scheduler bootstrap failed',e)));
  const sync=await c.env.DB.prepare("SELECT last_success,last_error FROM sync_state WHERE name='catalog'").first<{last_success:number;last_error:string|null}>();
  const total=await c.env.DB.prepare('SELECT count(*) as count FROM models').first<{count:number}>();
- const coverage=await c.env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN last_checked>0 THEN 1 ELSE 0 END) AS scanned, SUM(CASE WHEN last_checked<? THEN 1 ELSE 0 END) AS due, SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS errors FROM collection_jobs')
-  .bind(now()-PROVIDER_INTERVAL_SECONDS).first<{total:number;scanned:number|null;due:number|null;errors:number|null}>();
+ const coverage=await c.env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN last_checked>0 THEN 1 ELSE 0 END) AS scanned, SUM(CASE WHEN last_checked<? THEN 1 ELSE 0 END) AS due, SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN last_success>=? AND last_error IS NULL THEN 1 ELSE 0 END) AS recent FROM collection_jobs')
+  .bind(now()-PROVIDER_INTERVAL_SECONDS,now()-PROVIDER_INTERVAL_SECONDS).first<{total:number;scanned:number|null;due:number|null;errors:number|null;recent:number|null}>();
  const healthy=!!c.env.OPENROUTER_API_KEY&&!!sync?.last_success&&!sync?.last_error&&now()-sync.last_success<2*CATALOG_INTERVAL_SECONDS
   &&(coverage?.total===0 || (coverage?.scanned||0)>0);
- return c.json({status:healthy?'ok':'degraded',models:total?.count||0,catalog_last_success:sync?.last_success||null,catalog_error:sync?.last_error||null,provider_monitoring:'all_models',provider_total:coverage?.total||0,provider_scanned:coverage?.scanned||0,provider_due:coverage?.due||0,provider_errors:coverage?.errors||0,catalog_interval_seconds:CATALOG_INTERVAL_SECONDS,provider_interval_seconds:PROVIDER_INTERVAL_SECONDS,scheduler_interval_seconds:ALARM_INTERVAL_MS/1000,server_time:now()},healthy?200:503);
+ return c.json({status:healthy?'ok':'degraded',models:total?.count||0,catalog_last_success:sync?.last_success||null,catalog_error:sync?.last_error||null,provider_monitoring:'all_models',provider_total:coverage?.total||0,provider_scanned:coverage?.scanned||0,provider_due:coverage?.due||0,provider_errors:coverage?.errors||0,provider_recent:coverage?.recent||0,catalog_interval_seconds:CATALOG_INTERVAL_SECONDS,provider_interval_seconds:PROVIDER_INTERVAL_SECONDS,scheduler_interval_seconds:ALARM_INTERVAL_MS/1000,server_time:now()},healthy?200:503);
 });
 app.get('/api/stats',async c=>{
  const [models,providers,subscriptions,events]=await Promise.all([
@@ -46,19 +46,22 @@ app.get('/api/stats',async c=>{
 });
 app.get('/api/analytics', async c => {
  const window = analyticsWindow(c.req.query('days'), now());
- const [eventRows, modelKinds, topProviders] = await Promise.all([
+ const [eventRows, modelKinds, topProviders, priceDimensions] = await Promise.all([
   c.env.DB.prepare("SELECT date(created_at,'unixepoch') AS day,kind,COUNT(*) AS count FROM price_events WHERE quality='observed' AND created_at>=? AND created_at<=? GROUP BY date(created_at,'unixepoch'),kind ORDER BY day ASC")
    .bind(window.from,window.to).all<{day:string;kind:string;count:number}>(),
   c.env.DB.prepare("SELECT model_kind AS kind,COUNT(*) AS count FROM models WHERE lifecycle_status='active' GROUP BY model_kind ORDER BY count DESC")
    .all<{kind:string;count:number}>(),
   c.env.DB.prepare("SELECT provider,COUNT(DISTINCT model_id) AS models,COUNT(*) AS endpoints FROM endpoints WHERE source='provider' AND status='active' GROUP BY provider ORDER BY models DESC,endpoints DESC,provider COLLATE NOCASE ASC LIMIT 6")
-   .all<{provider:string;models:number;endpoints:number}>()
+   .all<{provider:string;models:number;endpoints:number}>(),
+  c.env.DB.prepare("SELECT dimension,COUNT(*) AS count FROM price_events WHERE quality='observed' AND kind IN ('price.increased','price.decreased','image.price_increased','image.price_decreased') AND created_at>=? AND dimension IS NOT NULL GROUP BY dimension ORDER BY count DESC LIMIT 12")
+   .bind(window.from).all<{dimension:string;count:number}>()
  ]);
  return c.json({
   days:window.days,from:window.from,to:window.to,updatedAt:now(),
   daily:buildDailyAnalytics(eventRows.results||[],window.from,window.days),
   modelKinds:modelKinds.results||[],
-  topProviders:topProviders.results||[]
+  topProviders:topProviders.results||[],
+  priceDimensions:priceDimensions.results||[]
  });
 });
 app.get('/api/models',async c=>{

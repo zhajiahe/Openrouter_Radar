@@ -14,3 +14,5 @@ CREATE INDEX idx_observations_model_dimension ON price_observations(model_id,sou
 CREATE INDEX idx_observations_endpoint ON price_observations(endpoint_id,dimension,observed_at DESC);
 INSERT OR IGNORE INTO price_observations(endpoint_id,model_id,provider,source,dimension,unit,price,observed_at)
  SELECT endpoint_id,model_id,provider,source,dimension,'USD/token',price,observed_at FROM price_history;
+-- Fill newly supported dimensions at the next successful real Provider scan.
+UPDATE endpoints SET history_seeded=0 WHERE source='provider';

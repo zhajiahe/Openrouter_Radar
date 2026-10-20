@@ -58,6 +58,10 @@ function policyText(value:unknown):string|null{
  return value===undefined?null:JSON.stringify(stable(value));
 }
 const MONETARY_DIMENSIONS=new Set(Object.keys(PRICE_FIELDS));
+function scheduledPricing(previous:Prices,current:Prices):boolean{
+ const a=policyText(previous.raw.overrides),b=policyText(current.raw.overrides);
+ return a!==null&&a===b&&/"utc_(?:start|end)"/.test(a);
+}
 /** Only confirmed monetary dimensions may be labelled "price went up/down".
  * Metadata such as "discount" is a policy change, not the dollar cost of a request. */
 export function findPriceChanges(previous:Prices,current:Prices):PriceDelta[]{
@@ -83,6 +87,12 @@ export function findPriceChanges(previous:Prices,current:Prices):PriceDelta[]{
   }
   const oldNumber=new Decimal(oldValue),newNumber=new Decimal(newValue);
   if(oldNumber.eq(newNumber))continue;
+  // Unchanged scheduled UTC tariffs may switch active rates without an unconditional price edit.
+  if((key==='prompt'||key==='completion')&&scheduledPricing(previous,current)){
+   result.push({kind:'price.policy_changed',dimension:'scheduled_'+dimension,
+    oldPrice:oldValue,newPrice:newValue,percent:null});
+   continue;
+  }
   result.push({
    kind:newNumber.gt(oldNumber)?'price.increased':'price.decreased',dimension,
    oldPrice:oldValue,newPrice:newValue,
