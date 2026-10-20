@@ -3,25 +3,88 @@
   "name": "openrouter-radar",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "observability": { "enabled": true },
-  "durable_objects": { "bindings": [{ "name": "SCHEDULER", "class_name": "RadarScheduler" }] },
-  "migrations": [{ "tag": "radar-scheduler-v1", "new_sqlite_classes": ["RadarScheduler"] }],
-  "d1_databases": [{
-    "binding": "DB",
-    "database_name": "openrouter-radar",
-    "database_id": "1487e863-77b6-4c56-b448-52718ace08d7",
-    "migrations_dir": "migrations"
-  }],
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SCHEDULER",
+        "class_name": "RadarScheduler"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "radar-scheduler-v1",
+      "new_sqlite_classes": [
+        "RadarScheduler"
+      ]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "openrouter-radar",
+      "database_id": "1487e863-77b6-4c56-b448-52718ace08d7",
+      "migrations_dir": "migrations"
+    }
+  ],
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/feed.xml"]
+    "run_worker_first": [
+      "/api/*",
+      "/feed.xml"
+    ]
   },
   "vars": {
     "APP_ORIGIN": "https://openrouter-radar.zhajiahe1994.workers.dev",
     "MAIL_FROM": "Radar <notifications@example.com>",
     "OPEN_SIGNUP": "false",
     "MAX_MODELS_PER_TICK": "15"
-  }
+  },
+  "ratelimits": [
+    {
+      "name": "AUTH_RATE_LIMITER",
+      "namespace_id": "47291101",
+      "simple": {
+        "limit": 12,
+        "period": 60
+      }
+    },
+    {
+      "name": "IDENTITY_RATE_LIMITER",
+      "namespace_id": "47291102",
+      "simple": {
+        "limit": 6,
+        "period": 60
+      }
+    },
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "47291103",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      "name": "EXPENSIVE_RATE_LIMITER",
+      "namespace_id": "47291104",
+      "simple": {
+        "limit": 24,
+        "period": 60
+      }
+    },
+    {
+      "name": "MUTATION_RATE_LIMITER",
+      "namespace_id": "47291105",
+      "simple": {
+        "limit": 40,
+        "period": 60
+      }
+    }
+  ]
 }
