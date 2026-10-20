@@ -1,12 +1,21 @@
 import { now, type Bindings } from './types';
+import { observedPrices } from './pricing';
 import type { Prices } from './pricing';
+import type { ImageCharge } from './image-pricing';
+import { imageChargeDimension } from './image-pricing';
 
-/** Sparse, observed-only history: baseline + actual price changes, not interpolated hourly samples. */
+/** Sparse, observed-only baselines and price changes, with explicit billing units. */
 export function historyStatements(env:Bindings,endpointId:string,modelId:string,provider:string,source:'model'|'provider',current:Prices,previous:Prices|null,ts=now()):D1PreparedStatement[]{
- const dims=[['input',current.prompt,previous?.prompt],['output',current.completion,previous?.completion]] as const;
- return dims.filter(([,next,old])=>next!==null&&(previous===null||next!==old)).map(([dimension,price])=>
-  env.DB.prepare('INSERT OR IGNORE INTO price_history(endpoint_id,model_id,provider,source,dimension,price,observed_at) VALUES(?,?,?,?,?,?,?)')
-   .bind(endpointId,modelId,provider,source,dimension,price,ts));
+ const old=new Map(previous?observedPrices(previous).map(p=>[p.dimension,p.price]):[]);
+ return observedPrices(current).filter(p=>!old.has(p.dimension)||old.get(p.dimension)!==p.price).map(p=>
+  env.DB.prepare('INSERT OR IGNORE INTO price_observations(endpoint_id,model_id,provider,source,dimension,unit,price,observed_at) VALUES(?,?,?,?,?,?,?,?)')
+   .bind(endpointId,modelId,provider,source,p.dimension,p.unit,p.price,ts));
+}
+export function imageHistoryStatements(env:Bindings,endpointId:string,modelId:string,provider:string,current:ImageCharge[],previous:ImageCharge[]|null,ts=now()):D1PreparedStatement[]{
+ const old=new Map((previous||[]).map(charge=>[imageChargeDimension(charge),charge.cost_usd]));
+ return current.filter(charge=>old.get(imageChargeDimension(charge))!==charge.cost_usd).map(charge=>
+  env.DB.prepare('INSERT OR IGNORE INTO price_observations(endpoint_id,model_id,provider,source,dimension,unit,price,observed_at) VALUES(?,?,?,?,?,?,?,?)')
+   .bind(endpointId,modelId,provider,'provider',imageChargeDimension(charge),'USD/'+charge.unit,charge.cost_usd,ts));
 }
 export function safeCollectionError(input:string|null):string|null{
  if(!input)return null;
@@ -18,17 +27,14 @@ export function safeCollectionError(input:string|null):string|null{
  return 'Upstream collection failed';
 }
 export async function prunePriceHistory(env:Bindings,clock=now()):Promise<number>{
- // Purge small batches; keep recent 180 days. Events remain immutable and are not removed.
  const cutoff=clock-180*86400;
- const result=await env.DB.prepare('DELETE FROM price_history WHERE rowid IN (SELECT rowid FROM price_history WHERE observed_at<? LIMIT 250)').bind(cutoff).run();
- return result.meta.changes||0;
+ const current=await env.DB.prepare('DELETE FROM price_observations WHERE rowid IN (SELECT rowid FROM price_observations WHERE observed_at<? LIMIT 250)').bind(cutoff).run();
+ const legacy=await env.DB.prepare('DELETE FROM price_history WHERE rowid IN (SELECT rowid FROM price_history WHERE observed_at<? LIMIT 250)').bind(cutoff).run();
+ return (current.meta.changes||0)+(legacy.meta.changes||0);
 }
-
-/** Seed one observed baseline for legacy endpoints only when a successful real scan occurs.
- * NOT EXISTS prevents fabricating duplicate points for already recorded endpoints. */
+/** Backfill missing dimensions only when the scanner confirms current rates. No fake timestamps. */
 export function missingHistoryStatements(env:Bindings,endpointId:string,modelId:string,provider:string,source:'model'|'provider',current:Prices,ts=now()):D1PreparedStatement[]{
- const dims=[['input',current.prompt],['output',current.completion]] as const;
- return dims.filter(([,price])=>price!==null).map(([dimension,price])=>
-  env.DB.prepare("INSERT OR IGNORE INTO price_history(endpoint_id,model_id,provider,source,dimension,price,observed_at) SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM price_history WHERE endpoint_id=? AND dimension=?)")
-   .bind(endpointId,modelId,provider,source,dimension,price,ts,endpointId,dimension));
+ return observedPrices(current).map(p=>
+  env.DB.prepare("INSERT OR IGNORE INTO price_observations(endpoint_id,model_id,provider,source,dimension,unit,price,observed_at) SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM price_observations WHERE endpoint_id=? AND dimension=?)")
+   .bind(endpointId,modelId,provider,source,p.dimension,p.unit,p.price,ts,endpointId,p.dimension));
 }

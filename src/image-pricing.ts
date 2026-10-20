@@ -27,6 +27,9 @@ export function imageCharges(raw:unknown):ImageCharge[]{
 }
 export function imageRaw(charges:ImageCharge[]):Record<string,unknown>{return {image_pricing:charges};}
 function key(c:ImageCharge){return JSON.stringify([c.billable,c.unit,c.conditions]);}
+export function imageChargeDimension(charge:ImageCharge):string{
+ return 'image/'+charge.billable+'/'+charge.unit+(charge.conditions==='{}'?'':' '+charge.conditions);
+}
 export function findImagePriceChanges(prev:ImageCharge[],next:ImageCharge[]):ImageChange[]{
  const before=new Map<string,ImageCharge>(),after=new Map<string,ImageCharge>();
  for(const c of prev)before.set(key(c),c);
@@ -39,7 +42,7 @@ export function findImagePriceChanges(prev:ImageCharge[],next:ImageCharge[]):Ima
  for(const k of new Set([...before.keys(),...after.keys()])){
   const old=before.get(k),current=after.get(k);
   const basis=current||old!;
-  const dimension='image/'+basis.billable+'/'+basis.unit+(basis.conditions==='{}'?'':' '+basis.conditions);
+  const dimension=imageChargeDimension(basis);
   if(!old||!current){
    result.push({kind:'image.price_policy_changed',dimension,
     oldPrice:old?.cost_usd??null,newPrice:current?.cost_usd??null,percent:null});

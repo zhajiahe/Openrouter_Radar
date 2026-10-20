@@ -41,7 +41,7 @@ async function request(path:string,apiKey:string):Promise<unknown>{
  return response.json();
 }
 export async function listModels(apiKey:string):Promise<UpstreamModel[]>{
- return z.object({data:z.array(modelSchema)}).parse(await request('/api/v1/models',apiKey)).data;
+ return z.object({data:z.array(modelSchema)}).parse(await request('/api/v1/models?output_modalities=all',apiKey)).data;
 }
 export async function listEndpoints(modelId:string,apiKey:string):Promise<UpstreamEndpoint[]>{
  const [author,...rest]=modelId.split('/');

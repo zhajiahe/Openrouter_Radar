@@ -7,6 +7,7 @@ import { CATALOG_INTERVAL_SECONDS, PROVIDER_INTERVAL_SECONDS } from './collector
 import { ALARM_INTERVAL_MS } from './scheduler';
 import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
+import { PRICE_FIELDS } from './pricing';
 export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
@@ -84,8 +85,8 @@ app.get('/api/models',async c=>{
  AND COALESCE(m.context_length,0)>=?
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.architecture.input_modalities'),'[]')) j WHERE lower(j.value)=lower(?)))
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.supported_parameters'),'[]')) j WHERE lower(j.value)=lower(?)))
- AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=?))`;
- const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0] as const;
+ AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=? AND (?='' OR x.provider=?)))`;
+ const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0,provider,provider] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,
    (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL) AS lowest_input,
@@ -107,7 +108,7 @@ app.get('/api/model',async c=>{
  const [model,job,endpoints]=await Promise.all([
   c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at,model_kind,lifecycle_status FROM models WHERE id=?').bind(id).first(),
   c.env.DB.prepare('SELECT last_checked,last_success,last_error FROM collection_jobs WHERE model_id=?').bind(id).first<{last_checked:number;last_success:number;last_error:string|null}>(),
-  c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,e.checked_at,e.first_seen FROM endpoints e WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
+  c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,CASE WHEN e.source='provider' AND j.last_success>0 THEN j.last_success ELSE e.checked_at END AS checked_at,e.first_seen FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
  ]);
  if(!model)return c.json({error:'Model not found'},404);
  const success=job?.last_success||0;
@@ -122,22 +123,31 @@ app.get('/api/model',async c=>{
 app.get('/api/price-history',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
  const provider=(c.req.query('provider')||'').slice(0,150);
- const dimension=c.req.query('dimension')==='output'?'output':'input';
  const image=c.req.query('mode')==='image';
+ const dimension=(c.req.query('dimension')||'input').slice(0,80);
+ const source=c.req.query('source')==='model'?'model':'provider';
  if(!modelId)return c.json({error:'model_id is required'},400);
+ const units=Object.values(PRICE_FIELDS);
+ if(!image&&!units.some(item=>item.dimension===dimension))return c.json({error:'unknown price dimension'},400);
  const requested=Number(c.req.query('since'));
  const oldest=now()-180*86400;
  const since=Number.isFinite(requested)&&requested>0?Math.min(now(),Math.max(oldest,requested)):now()-90*86400;
- if(image){
-  // Image tariffs use their own unit-qualified dimension; never mix them with USD/token.
-  // Historical image prices are available only after an actual change event was seen.
-  const rows=await c.env.DB.prepare("SELECT pe.endpoint_id,pe.model_id,pe.provider,ep.tag,pe.dimension,pe.new_price AS price,pe.created_at AS observed_at FROM price_events pe LEFT JOIN endpoints ep ON ep.id=pe.endpoint_id WHERE pe.model_id=? AND (?='' OR pe.provider=?) AND pe.kind IN ('image.price_increased','image.price_decreased') AND pe.quality='observed' AND pe.new_price IS NOT NULL AND pe.created_at>=? ORDER BY pe.created_at ASC,pe.provider ASC LIMIT 2000")
-   .bind(modelId,provider,provider,since).all();
-  return c.json({data:rows.results,unit:'USD per image billing item',method:'observed_price_change_events',retention_days:180});
- }
- const rows=await c.env.DB.prepare("SELECT h.endpoint_id,h.model_id,h.provider,ep.tag,h.source,h.dimension,h.price,h.observed_at FROM price_history h LEFT JOIN endpoints ep ON ep.id=h.endpoint_id WHERE h.model_id=? AND h.source='provider' AND (?='' OR h.provider=?) AND h.dimension=? AND h.observed_at>=? ORDER BY h.observed_at ASC,h.provider ASC LIMIT 2000")
-  .bind(modelId,provider,provider,dimension,since).all();
- return c.json({data:rows.results,unit:'USD/token',method:'observed_change_points',retention_days:180});
+ const filter=image?"h.dimension LIKE 'image/%'":"h.dimension=?";
+ const value=image?'':dimension;
+ const sql=`SELECT h.endpoint_id,h.model_id,h.provider,ep.tag,h.source,h.dimension,h.unit,h.price,h.observed_at
+  FROM price_observations h LEFT JOIN endpoints ep ON ep.id=h.endpoint_id
+  WHERE h.model_id=? AND h.source=? AND (?='' OR h.provider=?) AND ${filter} AND h.observed_at>=?
+  UNION ALL
+  SELECT h.endpoint_id,h.model_id,h.provider,ep.tag,h.source,h.dimension,h.unit,h.price,h.observed_at
+  FROM price_observations h LEFT JOIN endpoints ep ON ep.id=h.endpoint_id
+  WHERE h.model_id=? AND h.source=? AND (?='' OR h.provider=?) AND ${filter} AND h.observed_at<? AND NOT EXISTS(
+   SELECT 1 FROM price_observations later WHERE later.endpoint_id=h.endpoint_id AND later.dimension=h.dimension
+   AND later.observed_at<? AND later.observed_at>h.observed_at)
+  ORDER BY observed_at ASC LIMIT 2000`;
+ const args=image?[modelId,source,provider,provider,since,modelId,source,provider,provider,since,since]
+  :[modelId,source,provider,provider,value,since,modelId,source,provider,provider,value,since,since];
+ const rows=await c.env.DB.prepare(sql).bind(...args).all();
+ return c.json({data:rows.results,unit:image?'mixed':units.find(x=>x.dimension===dimension)?.unit,method:'observed_baseline_and_change_points',retention_days:180,window_start:since});
 });
 app.get('/api/events',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);

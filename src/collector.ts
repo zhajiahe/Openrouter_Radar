@@ -3,7 +3,7 @@ import {imageCharges,imageRaw,storedImageCharges,findImagePriceChanges,type Imag
 import {parsePrices,endpointId,findPriceChanges,thresholdMatches,type Prices} from './pricing';
 import {modelState,modelDeltas,expiryWindow,type ModelState} from './phase3';
 import {now,type Bindings,type EventKind} from './types';
-import {historyStatements,missingHistoryStatements,prunePriceHistory} from './history';
+import {historyStatements,missingHistoryStatements,imageHistoryStatements,prunePriceHistory} from './history';
 
 type Existing={id:string;provider:string;tag:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number;history_seeded:number;stable_key:string|null};
 type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string;model_kind:string;lifecycle_status:string;missing_count:number};
@@ -159,7 +159,7 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
    env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at,history_seeded,stable_key) VALUES(?,?,?,?,?,?,?,?,?,?,1,?)")
     .bind(id,modelId,provider,tag,source,prices.prompt,prices.completion,JSON.stringify(raw),ts,ts,o.stableKey??null)
   ];
-  stmts.push(...historyStatements(env,id,modelId,provider,source,prices,null,ts));
+  stmts.push(...(o.image?imageHistoryStatements(env,id,modelId,provider,o.image,null,ts):historyStatements(env,id,modelId,provider,source,prices,null,ts)));
   if(allowAdded)stmts.push(event(env,id,modelId,provider,'endpoint.added',null,null,null,null,ts,o.snapshotId??null));
   await env.DB.batch(stmts);return;
  }
@@ -168,7 +168,13 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
   :findPriceChanges(storedPrices(previous.pricing_json),prices);
  // A successful sweep is recorded on collection_jobs. Do not rewrite identical
  // endpoint rows every hour, which would exhaust D1 Free daily write limits.
- if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null)&&previous.provider===provider&&previous.tag===tag&&(!o.image||previous.pricing_json===JSON.stringify(raw)))return;
+ if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null)&&previous.provider===provider&&previous.tag===tag&&(!o.image||previous.pricing_json===JSON.stringify(raw))){
+  // Baseline newly supported dimensions after schema upgrade without manufacturing changes.
+  const baselines=o.image?imageHistoryStatements(env,id,modelId,provider,o.image,storedImageCharges(previous.pricing_json),ts)
+   :missingHistoryStatements(env,id,modelId,provider,source,prices,ts);
+  if(baselines.length)await env.DB.batch(baselines);
+  return;
+ }
  const stmts:D1PreparedStatement[]=[
   env.DB.prepare("UPDATE endpoints SET provider=?,tag=?,input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1,stable_key=? WHERE id=?")
    .bind(provider,tag,prices.prompt,prices.completion,JSON.stringify(raw),ts,o.stableKey??null,id)
@@ -177,9 +183,13 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
  for(const delta of changes){
   stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts,o.snapshotId??null));
  }
- stmts.push(...(previous.history_seeded===1
-  ?historyStatements(env,id,modelId,provider,source,prices,storedPrices(previous.pricing_json),ts)
-  :missingHistoryStatements(env,id,modelId,provider,source,prices,ts)));
+ if(o.image){
+  stmts.push(...imageHistoryStatements(env,id,modelId,provider,o.image,storedImageCharges(previous.pricing_json).length?storedImageCharges(previous.pricing_json):null,ts));
+ }else{
+  stmts.push(...(previous.history_seeded===1
+   ?historyStatements(env,id,modelId,provider,source,prices,storedPrices(previous.pricing_json),ts)
+   :missingHistoryStatements(env,id,modelId,provider,source,prices,ts)));
+ }
  await env.DB.batch(stmts);
 }
 /** Stable provider identity does not incorporate mutable name, quantization or tier. */
@@ -209,6 +219,14 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
   const prev=new Set(existing.results.map(r=>r.id));
   const seen=new Set<string>(),initial=existing.results.filter(r=>r.status!=='superseded').length===0;
   const assigned=new Set<string>();
+  const counts=new Map<string,number>();
+  for(const item of items){
+   const tag='provider_tag' in item?item.provider_tag:('tag' in item?item.tag:'');
+   const slug='provider_slug' in item?item.provider_slug:item.provider_name;
+   const key=stableEndpointKey(String(slug||item.provider_name),String(tag||''));
+   counts.set(key,(counts.get(key)||0)+1);
+  }
+  const ordinals=new Map<string,number>();
   for(const item of items){
    const provider=item.provider_name;
    const rawTag='provider_tag' in item?item.provider_tag:undefined;
@@ -218,13 +236,16 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
     :(typeof rawFallback==='string'&&rawFallback?rawFallback:typeof rawTag==='string'?rawTag:'');
    const rawSlug='provider_slug' in item?item.provider_slug:undefined;
    const slug=typeof rawSlug==='string'&&rawSlug?rawSlug:provider;
-   const key=stableEndpointKey(slug,tag);
+   const baseKey=stableEndpointKey(slug,tag);
+   const ordinal=ordinals.get(baseKey)||0;ordinals.set(baseKey,ordinal+1);
+   const suffix=counts.get(baseKey)!>1?JSON.stringify(['variant',String('name' in item?item.name||'':''),String('quantization' in item?item.quantization||'':''),ordinal]):'';
+   const key=baseKey+suffix;
    // Legacy database keys can include quantization/tier/name. Reuse their IDs
    // to retain historical events and price points rather than rekeying FKs.
-   const candidates=existing.results.filter(r=>r.status!=='superseded'&&
-    (r.stable_key===key||(r.provider===provider&&r.tag===tag)));
-   const chosen=candidates.find(r=>r.status==='active')??candidates[0];
-   const id=chosen?.id??await endpointId(modelId,provider,tag);
+   const candidates=existing.results.filter(r=>r.status!=='superseded'&&!seen.has(r.id)&&
+    (r.stable_key===key||(r.stable_key===null||r.stable_key===baseKey)&&(r.provider===provider&&r.tag===tag)));
+   const chosen=candidates.find(r=>r.stable_key===key)??candidates.find(r=>r.status==='active')??candidates[0];
+   const id=chosen?.id??await endpointId(modelId,provider,tag,suffix);
    if(assigned.has(key)||seen.has(id))continue;
    assigned.add(key);seen.add(id);
    const image=isImage?imageCharges((item as UpstreamImageEndpoint).pricing):undefined;
@@ -233,7 +254,7 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
     stableKey:key,existingId:chosen?.id,image,snapshotId:crypto.randomUUID()},!initial&&!prev.has(id));
    // Historical variants of the same provider/tag no longer count as endpoints;
    // retire them quietly, without spurious "provider removed" events.
-   for(const duplicate of candidates)if(duplicate.id!==id){
+   for(const duplicate of candidates)if(duplicate.id!==id&&duplicate.stable_key===key){
     seen.add(duplicate.id);
     await env.DB.prepare("UPDATE endpoints SET status='superseded',missing_count=0 WHERE id=?")
      .bind(duplicate.id).run();
