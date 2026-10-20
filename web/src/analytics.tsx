@@ -40,11 +40,12 @@ export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(
   const interval=window.setInterval(()=>void load(),60_000);
   return ()=>{cancelled=true;window.clearInterval(interval);};
  },[days,refreshToken]);
- const totalEvents=data?.daily.reduce((sum,d)=>sum+d.total,0)??0;
- const priceEvents=data?.daily.reduce((sum,d)=>sum+d.priceUp+d.priceDown,0)??0;
- const activeModels=data?.modelKinds.reduce((sum,k)=>sum+k.count,0)??0;
- const updated=data?.updatedAt?new Date(data.updatedAt*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—';
- const modelKinds=data?.modelKinds.filter(x=>x.count>0).map((x,i)=>({
+ const visibleData=visibleData?.days===days?data:null;
+ const totalEvents=visibleData?.daily.reduce((sum,d)=>sum+d.total,0)??0;
+ const priceEvents=visibleData?.daily.reduce((sum,d)=>sum+d.priceUp+d.priceDown,0)??0;
+ const activeModels=visibleData?.modelKinds.reduce((sum,k)=>sum+k.count,0)??0;
+ const updated=visibleData?.updatedAt?new Date(data.updatedAt*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—';
+ const modelKinds=visibleData?.modelKinds.filter(x=>x.count>0).map((x,i)=>({
   name:kindLabel(x.kind),value:x.count,color:['var(--chart-violet)','var(--chart-down)','var(--chart-up)','var(--chart-muted)'][i%4]
  }))??[];
  return <section className="analytics-shell" aria-labelledby="analytics-title">
@@ -56,29 +57,29 @@ export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(
    </Group>
   </div>
   <div className="analytics-summary" aria-live="polite">
-   <div><Activity size={16} aria-hidden="true"/><span>{days} 天内事件</span><strong>{data?number(totalEvents):'—'}</strong></div>
-   <div><ArrowUpRight size={16} aria-hidden="true"/><span>价格调整</span><strong>{data?number(priceEvents):'—'}</strong></div>
-   <div><span>活跃模型</span><strong>{data?number(activeModels):'—'}</strong></div>
+   <div><Activity size={16} aria-hidden="true"/><span>{days} 天内事件</span><strong>{visibleData?number(totalEvents):'—'}</strong></div>
+   <div><ArrowUpRight size={16} aria-hidden="true"/><span>价格调整</span><strong>{visibleData?number(priceEvents):'—'}</strong></div>
+   <div><span>活跃模型</span><strong>{visibleData?number(activeModels):'—'}</strong></div>
    <small>{loading?'同步中…':'最近更新 '+updated}</small>
   </div>
   {error&&<div className="chart-inline-error" role="alert">{error}<Button variant="light" size="xs" onClick={()=>setRefreshToken(v=>v+1)}>重试</Button></div>}
   <div className="analytics-grid">
    <section className="chart-panel chart-panel-wide" aria-labelledby="activity-title">
-    <div className="chart-heading"><div><h3 id="activity-title">每日变动趋势</h3><p>UTC 日期聚合，柱状图支持悬停和键盘查看</p></div><strong>{data?number(totalEvents):'—'} 项</strong></div>
-    {data?<BarChart h={260} data={data.daily} dataKey="date" series={SERIES} type="stacked" withLegend withTooltip gridAxis="y" tickLine="none" valueFormatter={value=>number(value)} xAxisProps={{tickFormatter:dateLabel,interval:days===30?5:0}} />:<ChartPlaceholder loading={loading}/>}
-    {data&&!data.daily.some(d=>d.total>0)&&<p className="chart-muted">所选范围内没有真实变化事件。</p>}
+    <div className="chart-heading"><div><h3 id="activity-title">每日变动趋势</h3><p>UTC 日期聚合，柱状图支持悬停和键盘查看</p></div><strong>{visibleData?number(totalEvents):'—'} 项</strong></div>
+    {visibleData?<BarChart h={260} data={visibleData.daily} dataKey="date" series={SERIES} type="stacked" withLegend withTooltip gridAxis="y" tickLine="none" valueFormatter={value=>number(value)} xAxisProps={{tickFormatter:dateLabel,interval:days===30?5:0}} />:<ChartPlaceholder loading={loading}/>}
+    {visibleData&&!visibleData.daily.some(d=>d.total>0)&&<p className="chart-muted">所选范围内没有真实变化事件。</p>}
     <div className="chart-actions">
-     <Select size="xs" searchable clearable aria-label="选择一天查看变化事件" placeholder="选择有变化的日期查看事件" data={(data?.daily??[]).filter(d=>d.total>0).map(d=>({value:d.date,label:dateLabel(d.date)+' · '+d.total+' 项'}))} onChange={value=>{if(value)onSelectDay(value);}}/>
+     <Select size="xs" searchable clearable aria-label="选择一天查看变化事件" placeholder="选择有变化的日期查看事件" data={(visibleData?.daily??[]).filter(d=>d.total>0).map(d=>({value:d.date,label:dateLabel(d.date)+' · '+d.total+' 项'}))} onChange={value=>{if(value)onSelectDay(value);}}/>
     </div>
    </section>
    <section className="chart-panel chart-panel-mix" aria-labelledby="mix-title">
     <div className="chart-heading"><div><h3 id="mix-title">模型类型构成</h3><p>当前活跃目录，非历史累计</p></div></div>
-    {data?(modelKinds.length?<div className="donut-layout"><DonutChart size={180} thickness={22} paddingAngle={3} data={modelKinds} tooltipDataSource="segment" chartLabel={number(activeModels)}/><div className="donut-breakdown">{modelKinds.map(x=><div key={x.name}><span>{x.name}</span><strong>{number(x.value)}</strong></div>)}</div></div>:<p className="chart-muted">暂无活跃模型</p>):<ChartPlaceholder loading={loading}/>}
+    {visibleData?(modelKinds.length?<div className="donut-layout"><DonutChart size={180} thickness={22} paddingAngle={3} data={modelKinds} tooltipDataSource="segment" chartLabel={number(activeModels)}/><div className="donut-breakdown">{modelKinds.map(x=><div key={x.name}><span>{x.name}</span><strong>{number(x.value)}</strong></div>)}</div></div>:<p className="chart-muted">暂无活跃模型</p>):<ChartPlaceholder loading={loading}/>}
    </section>
    <section className="chart-panel chart-panel-providers" aria-labelledby="provider-title">
     <div className="chart-heading"><div><h3 id="provider-title">Provider 覆盖排行</h3><p>当前覆盖的模型数 · 点击查看相关变动</p></div></div>
-    {data?(data.topProviders.length?<div className="provider-ranking">{data.topProviders.map((item,index)=>{
-     const max=Math.max(1,...data.topProviders.map(v=>v.models));
+    {visibleData?(visibleData.topProviders.length?<div className="provider-ranking">{visibleData.topProviders.map((item,index)=>{
+     const max=Math.max(1,...visibleData.topProviders.map(v=>v.models));
      return <button key={item.provider} type="button" className="provider-rank-row" onClick={()=>onSelectProvider(item.provider)}>
       <div><span>{index+1}. {item.provider}</span><strong>{number(item.models)} 模型</strong></div>
       <Progress value={item.models/max*100} color="violet" size="sm" aria-label={item.provider+' 覆盖 '+item.models+' 个模型'}/>
