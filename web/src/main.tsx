@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,Table,TextInput} from '@mantine/core';
-import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,Sun,UserRound,X} from 'lucide-react';
+import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,ChevronLeft,ChevronRight,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,SlidersHorizontal,Sun,UserRound,X} from 'lucide-react';
 import {useDebouncedValue} from '@mantine/hooks';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
@@ -78,6 +78,9 @@ function App(){
  const [maxInput,setMaxInput]=useState('');
  const [compareIds,setCompareIds]=useState<string[]>([]);
  const catalogSearch=useRef<HTMLInputElement>(null);
+ const navRef=useRef<HTMLElement>(null);
+ const [navAtEnd,setNavAtEnd]=useState(false);
+ const [filtersOpen,setFiltersOpen]=useState(false);
  const modelRequest=useRef(0);
  const eventRequest=useRef(0);
  const detailRef=useRef<HTMLDivElement>(null);
@@ -267,6 +270,7 @@ function App(){
  const scanned=status.provider_scanned??0;
  const total=status.provider_total??stats.models;
  const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
+ const activeFilterCount=[providerFilter,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput].filter(Boolean).length;
  const providerEndpoints=endpoints.filter(ep=>ep.source==='provider').sort((a,b)=>Number(b.status==='active')-Number(a.status==='active')||a.provider.localeCompare(b.provider));
  const observedInput=providerEndpoints.filter(ep=>ep.status==='active'&&!ep.pricing_json.includes('image_pricing')).map(ep=>ep.input_price===null?NaN:Number(ep.input_price)).filter(value=>Number.isFinite(value)&&value>=0);
  const lowestInput=observedInput.length?Math.min(...observedInput):null;
@@ -274,10 +278,11 @@ function App(){
   <aside className="sidebar">
    <div className="brand"><span className="brand-icon" aria-hidden="true"><Radar size={21}/></span><span>OpenRouter <b>Radar</b></span></div>
    <div className="side-caption">MODEL MONITORING</div>
-   <nav aria-label="主要导航">{navItems.map(({id,name,icon:Icon})=>
+   <nav aria-label="主要导航" ref={navRef} onScroll={e=>{const el=e.currentTarget;setNavAtEnd(el.scrollLeft+el.clientWidth>=el.scrollWidth-3);}}>{navItems.map(({id,name,icon:Icon})=>
     <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setError('');if(id!=='catalog')history.replaceState(null,'',location.pathname+location.search);}}>
      <Icon className="nav-icon" size={17} aria-hidden="true"/>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
     </button>)}</nav>
+   <button type="button" className="nav-more" aria-label={navAtEnd?'向左滚动导航':'向右滚动导航'} onClick={()=>navRef.current?.scrollBy({left:navAtEnd?-180:180,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}>{navAtEnd?<ChevronLeft size={17}/>:<ChevronRight size={17}/>}</button>
    <div className="side-footer"><span className="sidebar-status"><span className="online-dot"/> OPEN SOURCE RADAR</span><p>不需要个人 API Key。<br/>持续收集，按需订阅。</p><a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">在 GitHub 查看项目 ↗</a></div>
   </aside>
   <main className="main">
@@ -333,7 +338,9 @@ function App(){
      </div>
      <div className="catalog-grid">
       <aside className="panel filter-panel" aria-label="模型筛选">
-       <h3>Filters</h3>
+       <h3 className="filter-desktop-heading">Filters</h3>
+       <button type="button" className="filter-toggle" aria-controls="catalog-filter-contents" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(v=>!v)}><span><SlidersHorizontal size={17} aria-hidden="true"/> 筛选条件 {activeFilterCount>0?<Badge size="sm" variant="light" color="violet">{activeFilterCount}</Badge>:null}</span><ChevronDown size={16} aria-hidden="true" className={filtersOpen?'open':''}/></button>
+       <div id="catalog-filter-contents" className={'filter-contents '+(filtersOpen?'is-open':'')}>
        <label htmlFor="provider-filter">Provider</label>
        <Select id="provider-filter" searchable clearable nothingFoundMessage="未找到 Provider" placeholder="所有 Provider" value={providerFilter||null} onChange={v=>{setProviderFilter(v||"");setPage(1);setSelected(null);}} data={providers.map(p=>({value:p.provider,label:p.provider+" · "+p.model_count}))}/>
        <label htmlFor="author-filter">{"模型作者"}</label><TextInput id="author-filter" placeholder="例如 openai" value={authorFilter} onChange={e=>{setAuthorFilter(e.target.value);setPage(1);}}/>
@@ -344,6 +351,7 @@ function App(){
        <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}><RefreshCw size={14} aria-hidden="true"/> 清除筛选</button>
        <div className="filter-divider"/>
        <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 <ExternalLink size={12} aria-hidden="true"/></a></div>
+       </div>
       </aside>
       <div className="panel models-panel">
        <div className="panel-title"><span>All models <span className="muted">({modelTotal.toLocaleString()})</span></span><span className="muted">USD / 1M tokens</span></div>
@@ -378,7 +386,7 @@ function App(){
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
        <div className="detail-section-head"><h3>Provider 报价</h3><small>{selected.model_kind==='image'?'图片计费单位各异，详见原始规则':'USD / 百万 Token · 最新成功采集'}</small></div>
-       <div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col">检查时间</th></tr></thead><tbody>
+       <div className="mobile-table-hint">向左滑动查看完整报价与检查时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col">检查时间</th></tr></thead><tbody>
         {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
        </tbody></Table>{!providerEndpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
@@ -461,7 +469,7 @@ function App(){
 }
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
- return <div className="panel table-panel"><div className="scroll-x"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
+ return <div className="panel table-panel"><div className="mobile-table-hint">向左滑动查看变动明细与发现时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
  {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'?'teal':e.kind==='price.increased'?'red':'gray'}>{label(e.kind)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell">{time(e.created_at)}</td></tr>)}
  </tbody></Table>{!data.length&&<div className="empty roomy">还没有实际变化事件。首次采集只建立基准。</div>}</div></div>;
 }
