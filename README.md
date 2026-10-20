@@ -4,7 +4,7 @@
 
 **网站：** [访问在线网站](https://openrouter-radar.zhajiahe1994.workers.dev) · [健康状态](https://openrouter-radar.zhajiahe1994.workers.dev/api/health) · [源代码](https://github.com/zhajiahe/Openrouter_Radar)
 
-[UI 设计规范](docs/ui-design.md) · [产品 / UX 审计](docs/product-ux-audit.md) · [监控事件能力审计](docs/monitoring-events-audit.md) · [贡献指南](CONTRIBUTING.md) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
+[UI 设计规范](docs/ui-design.md) · [浏览器与移动端验收](docs/browser-qa.md) · [产品 / UX 审计](docs/product-ux-audit.md) · [监控事件能力审计](docs/monitoring-events-audit.md) · [贡献指南](CONTRIBUTING.md) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
 
 **后端：Hono + TypeScript + Cloudflare Workers + D1 + Durable Objects。前端：React + Vite。** UI 采用 OpenRouter 式紧凑模型目录与筛选信息架构，但保留独立品牌和原创样式。
 
