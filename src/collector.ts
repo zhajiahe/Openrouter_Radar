@@ -1,20 +1,21 @@
-import {listModels,listEndpoints,type UpstreamModel,type UpstreamEndpoint} from './openrouter';
+import {listModels,listEndpoints,listImageModels,listImageEndpoints,type UpstreamModel,type UpstreamEndpoint,type UpstreamImageEndpoint} from './openrouter';
+import {imageCharges,imageRaw,storedImageCharges,findImagePriceChanges,type ImageCharge} from './image-pricing';
 import {parsePrices,endpointId,findPriceChanges,thresholdMatches,type Prices} from './pricing';
 import {modelState,modelDeltas,expiryWindow,type ModelState} from './phase3';
 import {now,type Bindings,type EventKind} from './types';
 import {historyStatements,missingHistoryStatements,prunePriceHistory} from './history';
 
 type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number;history_seeded:number};
-type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string};
-type Observation={modelId:string;provider:string;tag:string;source:'model'|'provider';variant:string;prices:Prices};
+type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string;model_kind:string;lifecycle_status:string;missing_count:number};
+type Observation={modelId:string;provider:string;tag:string;source:'model'|'provider';variant:string;prices:Prices;stableKey?:string;existingId?:string;image?:ImageCharge[];snapshotId?:string};
 type EventRow={id:string;model_id:string;provider:string;kind:EventKind;dimension:string|null;change_pct:number|null;created_at:number};
 const MODEL_PROVIDER='OpenRouter (model aggregate)';
-function eventStatement(env:Bindings,eventId:string,endpoint:string,model:string,provider:string,kind:EventKind,dimension:string|null,oldValue:string|null,newValue:string|null,pct:number|null,ts:number):D1PreparedStatement{
- return env.DB.prepare("INSERT OR IGNORE INTO price_events (id,endpoint_id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
-  .bind(eventId,endpoint,model,provider,kind,dimension,oldValue,newValue,pct,ts);
+function eventStatement(env:Bindings,eventId:string,endpoint:string,model:string,provider:string,kind:EventKind,dimension:string|null,oldValue:string|null,newValue:string|null,pct:number|null,ts:number,snapshotId:string|null=null):D1PreparedStatement{
+ return env.DB.prepare("INSERT OR IGNORE INTO price_events (id,endpoint_id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at,snapshot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+  .bind(eventId,endpoint,model,provider,kind,dimension,oldValue,newValue,pct,ts,snapshotId);
 }
-function event(env:Bindings,endpoint:string,model:string,provider:string,kind:EventKind,dimension:string|null=null,oldValue:string|null=null,newValue:string|null=null,pct:number|null=null,ts=now()):D1PreparedStatement{
- return eventStatement(env,crypto.randomUUID(),endpoint,model,provider,kind,dimension,oldValue,newValue,pct,ts);
+function event(env:Bindings,endpoint:string,model:string,provider:string,kind:EventKind,dimension:string|null=null,oldValue:string|null=null,newValue:string|null=null,pct:number|null=null,ts=now(),snapshotId:string|null=null):D1PreparedStatement{
+ return eventStatement(env,crypto.randomUUID(),endpoint,model,provider,kind,dimension,oldValue,newValue,pct,ts,snapshotId);
 }
 function storedPrices(raw:string):Prices{try{return parsePrices(JSON.parse(raw));}catch{return parsePrices({});}}
 
@@ -37,7 +38,7 @@ async function existingModels(env:Bindings):Promise<Map<string,ModelRow>>{
  const models=new Map<string,ModelRow>();
  let cursor='';
  for(;;){
-  const page=await env.DB.prepare("SELECT id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target FROM models WHERE id>? ORDER BY id LIMIT 500")
+  const page=await env.DB.prepare("SELECT id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target,model_kind,lifecycle_status,missing_count FROM models WHERE id>? ORDER BY id LIMIT 500")
    .bind(cursor).all<ModelRow>();
   for(const row of page.results)models.set(row.id,row);
   if(page.results.length<500)break;
@@ -46,41 +47,75 @@ async function existingModels(env:Bindings):Promise<Map<string,ModelRow>>{
  return models;
 }
 
-export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=listModels):Promise<number>{
- const current=now();
- const lease=await env.DB.prepare("UPDATE sync_state SET leased_until=? WHERE name='catalog' AND leased_until<? AND last_success<?")
-  .bind(current+300,current,current-CATALOG_INTERVAL_SECONDS).run();
+
+/** Each upstream catalogue has its own successful-scan watermark. */
+async function syncCatalog(env:Bindings,kind:'standard'|'image',fetcher:typeof listModels):Promise<number>{
+ const name=kind==='image'?'images_catalog':'catalog',current=now();
+ const lease=await env.DB.prepare('UPDATE sync_state SET leased_until=? WHERE name=? AND leased_until<? AND last_success<?')
+  .bind(current+300,name,current,current-CATALOG_INTERVAL_SECONDS).run();
  if(!lease.meta.changes)return 0;
  try{
   const models=await fetcher(env.OPENROUTER_API_KEY||'');
-  if(models.length===0)throw new Error('Empty model catalogue');
+  if(!models.length)throw new Error('Empty '+name+' catalogue');
   const previous=await existingModels(env);
+  const prior=await env.DB.prepare('SELECT last_success FROM sync_state WHERE name=?').bind(name).first<{last_success:number}>();
+  const tracked=[...previous.values()].filter(m=>m.model_kind===kind&&m.lifecycle_status==='active');
+  if(tracked.length>=10&&models.length<Math.ceil(tracked.length*0.8))
+   throw new Error('Incomplete '+name+' catalogue; removals not inferred');
+  const seen=new Set<string>();
   let stmts:D1PreparedStatement[]=[];
   for(const m of models){
    const old=previous.get(m.id);
-   const state=modelState(m,old),raw=m.pricing??(old?storedPrices(old.pricing_json).raw:{});
+   if(kind==='standard'&&old?.model_kind==='image')continue;
+   seen.add(m.id);
+   const state=modelState(m,old);
+   const raw=kind==='image'?(old?storedPrices(old.pricing_json).raw:{}):m.pricing??(old?storedPrices(old.pricing_json).raw:{});
    const prices=parsePrices(raw),aggregate=await endpointId(m.id,MODEL_PROVIDER,'__model__');
-   stmts.push(env.DB.prepare("INSERT INTO models (id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,pricing_json=excluded.pricing_json,context_length=excluded.context_length,capabilities_json=excluded.capabilities_json,expiration_date=excluded.expiration_date,alias_target=excluded.alias_target,updated_at=CASE WHEN models.name<>excluded.name OR models.description<>excluded.description OR models.pricing_json<>excluded.pricing_json OR models.context_length IS NOT excluded.context_length OR models.capabilities_json<>excluded.capabilities_json OR models.expiration_date IS NOT excluded.expiration_date OR models.alias_target IS NOT excluded.alias_target THEN excluded.updated_at ELSE models.updated_at END")
-    .bind(m.id,m.name,m.description??old?.description??'',JSON.stringify(raw),state.context_length,state.capabilities_json,state.expiration_date,state.alias_target,current));
+   stmts.push(env.DB.prepare("INSERT INTO models (id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target,updated_at,model_kind,lifecycle_status,missing_count) VALUES(?,?,?,?,?,?,?,?,?,?, 'active',0) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,pricing_json=excluded.pricing_json,context_length=excluded.context_length,capabilities_json=excluded.capabilities_json,expiration_date=excluded.expiration_date,alias_target=excluded.alias_target,updated_at=CASE WHEN models.name<>excluded.name OR models.description<>excluded.description OR models.pricing_json<>excluded.pricing_json OR models.context_length IS NOT excluded.context_length OR models.capabilities_json<>excluded.capabilities_json OR models.expiration_date IS NOT excluded.expiration_date OR models.alias_target IS NOT excluded.alias_target THEN excluded.updated_at ELSE models.updated_at END,model_kind=excluded.model_kind,lifecycle_status='active',missing_count=0")
+    .bind(m.id,m.name,m.description??old?.description??'',JSON.stringify(raw),state.context_length,state.capabilities_json,state.expiration_date,state.alias_target,current,kind));
    stmts.push(env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET input_price=excluded.input_price,output_price=excluded.output_price,pricing_json=excluded.pricing_json,status='active',missing_count=0,checked_at=excluded.checked_at")
     .bind(aggregate,m.id,MODEL_PROVIDER,'__model__','model',prices.prompt,prices.completion,JSON.stringify(raw),current,current));
-   stmts.push(env.DB.prepare("INSERT OR IGNORE INTO collection_jobs(model_id) VALUES(?)").bind(m.id));
+   stmts.push(env.DB.prepare('INSERT OR IGNORE INTO collection_jobs(model_id) VALUES(?)').bind(m.id));
    stmts.push(...historyStatements(env,aggregate,m.id,MODEL_PROVIDER,'model',prices,old?storedPrices(old.pricing_json):null,current));
+   const snap=crypto.randomUUID();
    if(old){
+    if(old.lifecycle_status==='removed')stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,'model.restored',null,null,null,null,current,snap));
     for(const delta of modelDeltas(old,state))
-     stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,current));
-    for(const delta of findPriceChanges(storedPrices(old.pricing_json),prices))
-     stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,current));
+     stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,current,snap));
+    if(kind==='standard')for(const delta of findPriceChanges(storedPrices(old.pricing_json),prices))
+     stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,current,snap));
+   }else if(prior?.last_success){
+    stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,'model.added',null,null,null,null,current,snap));
    }
    if(stmts.length>=50){await env.DB.batch(stmts);stmts=[];}
   }
   if(stmts.length)await env.DB.batch(stmts);
-  await env.DB.prepare("UPDATE sync_state SET last_success=?,leased_until=0,last_error=NULL WHERE name='catalog'").bind(current).run();
+  // Never interpret failed or anomalously small responses as removals.
+  stmts=[];
+  for(const old of previous.values()){
+   if(old.model_kind!==kind||seen.has(old.id)||old.lifecycle_status==='removed')continue;
+   const next=old.missing_count+1;
+   stmts.push(env.DB.prepare('UPDATE models SET missing_count=?,lifecycle_status=? WHERE id=?')
+    .bind(next,next>=2?'removed':'active',old.id));
+   if(next===2){
+    const aggregate=await endpointId(old.id,MODEL_PROVIDER,'__model__');
+    stmts.push(event(env,aggregate,old.id,MODEL_PROVIDER,'model.removed',null,null,null,null,current));
+   }
+   if(stmts.length>=50){await env.DB.batch(stmts);stmts=[];}
+  }
+  if(stmts.length)await env.DB.batch(stmts);
+  await env.DB.prepare('UPDATE sync_state SET last_success=?,leased_until=0,last_error=NULL WHERE name=?').bind(current,name).run();
   return models.length;
  }catch(e){
-  await env.DB.prepare("UPDATE sync_state SET last_error=?,leased_until=0 WHERE name='catalog'").bind(String(e).slice(0,200)).run();
+  await env.DB.prepare('UPDATE sync_state SET last_error=?,leased_until=0 WHERE name=?').bind(String(e).slice(0,200),name).run();
   throw e;
  }
+}
+export async function refreshCatalog(env:Bindings,fetcher:typeof listModels=listModels):Promise<number>{
+ return syncCatalog(env,'standard',fetcher);
+}
+export async function refreshImageCatalog(env:Bindings,fetcher:typeof listModels=listImageModels):Promise<number>{
+ return syncCatalog(env,'image',fetcher);
 }
 
 async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
