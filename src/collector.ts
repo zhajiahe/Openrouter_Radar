@@ -5,7 +5,7 @@ import {modelState,modelDeltas,expiryWindow,type ModelState} from './phase3';
 import {now,type Bindings,type EventKind} from './types';
 import {historyStatements,missingHistoryStatements,prunePriceHistory} from './history';
 
-type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number;history_seeded:number;stable_key:string|null};
+type Existing={id:string;provider:string;tag:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number;history_seeded:number;stable_key:string|null};
 type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string;model_kind:string;lifecycle_status:string;missing_count:number};
 type Observation={modelId:string;provider:string;tag:string;source:'model'|'provider';variant:string;prices:Prices;stableKey?:string;existingId?:string;image?:ImageCharge[];snapshotId?:string};
 type EventRow={id:string;model_id:string;provider:string;kind:EventKind;dimension:string|null;change_pct:number|null;created_at:number};
@@ -152,7 +152,7 @@ export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<numbe
 export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false):Promise<void>{
  const {modelId,provider,tag,source,variant,prices}=o,id=o.existingId??await endpointId(modelId,provider,tag,variant);
  const raw=o.image?imageRaw(o.image):prices.raw;
- const previous=await env.DB.prepare('SELECT id,input_price,output_price,pricing_json,status,missing_count,history_seeded,stable_key FROM endpoints WHERE id=?').bind(id).first<Existing>();
+ const previous=await env.DB.prepare('SELECT id,provider,tag,input_price,output_price,pricing_json,status,missing_count,history_seeded,stable_key FROM endpoints WHERE id=?').bind(id).first<Existing>();
  const ts=now();
  if(!previous){
   const stmts:D1PreparedStatement[]=[
@@ -168,10 +168,10 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
   :findPriceChanges(storedPrices(previous.pricing_json),prices);
  // A successful sweep is recorded on collection_jobs. Do not rewrite identical
  // endpoint rows every hour, which would exhaust D1 Free daily write limits.
- if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null)&&(!o.image||previous.pricing_json===JSON.stringify(raw)))return;
+ if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null)&&previous.provider===provider&&previous.tag===tag&&(!o.image||previous.pricing_json===JSON.stringify(raw)))return;
  const stmts:D1PreparedStatement[]=[
-  env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1,stable_key=? WHERE id=?")
-   .bind(prices.prompt,prices.completion,JSON.stringify(raw),ts,o.stableKey??null,id)
+  env.DB.prepare("UPDATE endpoints SET provider=?,tag=?,input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1,stable_key=? WHERE id=?")
+   .bind(provider,tag,prices.prompt,prices.completion,JSON.stringify(raw),ts,o.stableKey??null,id)
  ];
  if(previous.status==='missing')stmts.push(event(env,id,modelId,provider,'endpoint.restored',null,null,null,null,ts,o.snapshotId??null));
  for(const delta of changes){
