@@ -123,7 +123,7 @@ app.get('/api/events',async c=>{
  const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND (?='' OR provider=?) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed')`;
  const binds=[modelId,modelId,kind,kind,q,q,q,provider,provider,start,end,includeBaseline?1:0] as const;
  const [rows,count]=await Promise.all([
-  c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at
+  c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at,quality
    FROM price_events WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...binds,limit,(page-1)*limit).all(),
   c.env.DB.prepare(`SELECT COUNT(*) AS total FROM price_events WHERE ${where}`).bind(...binds).first<{total:number}>()
  ]);
@@ -137,11 +137,11 @@ app.get('/api/events/export',async c=>{
  const q=(c.req.query('q')||'').slice(0,80);
  const includeBaseline=c.req.query('include_baseline')==='1';
  const start=Math.max(0,Number(c.req.query('start'))||0),end=Number(c.req.query('end'))||4102444800;
- const data=await c.env.DB.prepare("SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at FROM price_events WHERE (?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR provider=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed') ORDER BY created_at DESC LIMIT 1000")
+ const data=await c.env.DB.prepare("SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at,quality FROM price_events WHERE (?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR provider=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed') ORDER BY created_at DESC LIMIT 1000")
   .bind(modelId,modelId,kind,kind,provider,provider,q,q,q,start,end,includeBaseline?1:0).all();
  const headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="radar-events.'+format+'"','X-Export-Limit':'1000'};
  if(format==='json')return c.json({data:data.results,limit:1000,exported_at:now()},200,headers);
- const keys=['id','model_id','provider','kind','dimension','old_price','new_price','change_pct','created_at'];
+ const keys=['id','model_id','provider','kind','dimension','old_price','new_price','change_pct','created_at','quality'];
  const escape=(value:unknown)=>{
   const raw=String(value??'');
   // Escape potential spreadsheet formula injection even after opening a CSV.
