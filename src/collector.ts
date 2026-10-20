@@ -141,71 +141,108 @@ export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<numbe
  return records.results.length;
 }
 export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false):Promise<void>{
- const {modelId,provider,tag,source,variant,prices}=o,id=await endpointId(modelId,provider,tag,variant);
+ const {modelId,provider,tag,source,variant,prices}=o,id=o.existingId??await endpointId(modelId,provider,tag,variant);
+ const raw=o.image?imageRaw(o.image):prices.raw;
  const previous=await env.DB.prepare('SELECT id,input_price,output_price,pricing_json,status,missing_count,history_seeded FROM endpoints WHERE id=?').bind(id).first<Existing>();
  const ts=now();
  if(!previous){
   const stmts:D1PreparedStatement[]=[
-   env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at,history_seeded) VALUES(?,?,?,?,?,?,?,?,?,?,1)")
-    .bind(id,modelId,provider,tag,source,prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,ts)
+   env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at,history_seeded,stable_key) VALUES(?,?,?,?,?,?,?,?,?,?,1,?)")
+    .bind(id,modelId,provider,tag,source,prices.prompt,prices.completion,JSON.stringify(raw),ts,ts,o.stableKey??null)
   ];
   stmts.push(...historyStatements(env,id,modelId,provider,source,prices,null,ts));
-  if(allowAdded)stmts.push(event(env,id,modelId,provider,'endpoint.added',null,null,null,null,ts));
+  if(allowAdded)stmts.push(event(env,id,modelId,provider,'endpoint.added',null,null,null,null,ts,o.snapshotId??null));
   await env.DB.batch(stmts);return;
  }
- const changes=findPriceChanges(storedPrices(previous.pricing_json),prices);
+ const changes=o.image
+  ?(previous.pricing_json.includes('"image_pricing"')?findImagePriceChanges(storedImageCharges(previous.pricing_json),o.image):[])
+  :findPriceChanges(storedPrices(previous.pricing_json),prices);
  // A successful sweep is recorded on collection_jobs. Do not rewrite identical
  // endpoint rows every hour, which would exhaust D1 Free daily write limits.
  if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1)return;
  const stmts:D1PreparedStatement[]=[
-  env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1 WHERE id=?")
-   .bind(prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,id)
+  env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1,stable_key=? WHERE id=?")
+   .bind(prices.prompt,prices.completion,JSON.stringify(raw),ts,o.stableKey??null,id)
  ];
- if(previous.status==='missing')stmts.push(event(env,id,modelId,provider,'endpoint.restored',null,null,null,null,ts));
+ if(previous.status==='missing')stmts.push(event(env,id,modelId,provider,'endpoint.restored',null,null,null,null,ts,o.snapshotId??null));
  for(const delta of changes){
-  stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts));
+  stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts,o.snapshotId??null));
  }
  stmts.push(...(previous.history_seeded===1
   ?historyStatements(env,id,modelId,provider,source,prices,storedPrices(previous.pricing_json),ts)
   :missingHistoryStatements(env,id,modelId,provider,source,prices,ts)));
  await env.DB.batch(stmts);
 }
-export async function collectModel(env:Bindings,modelId:string,fetcher:typeof listEndpoints=listEndpoints):Promise<void>{
+/** Stable provider identity does not incorporate mutable name, quantization or tier. */
+export function stableEndpointKey(provider:string,tag:string):string{
+ return JSON.stringify([provider.trim().toLowerCase(),tag.trim().toLowerCase()]);
+}
+export async function collectModel(env:Bindings,modelId:string,fetcher:typeof listEndpoints=listEndpoints,
+ imageFetcher:typeof listImageEndpoints=listImageEndpoints):Promise<void>{
  const current=now(),lease=await env.DB.prepare('UPDATE collection_jobs SET leased_until=? WHERE model_id=? AND leased_until<?')
   .bind(current+180,modelId,current).run();
  if(!lease.meta.changes)return;
  try{
   if(!env.OPENROUTER_API_KEY)throw new Error('OPENROUTER_API_KEY is not configured');
-  const items:UpstreamEndpoint[]=await fetcher(modelId,env.OPENROUTER_API_KEY);
+  const model=await env.DB.prepare('SELECT model_kind,lifecycle_status FROM models WHERE id=?').bind(modelId)
+   .first<{model_kind:string;lifecycle_status:string}>();
+  if(!model||model.lifecycle_status==='removed'){
+   await env.DB.prepare('UPDATE collection_jobs SET leased_until=0 WHERE model_id=?').bind(modelId).run();
+   return;
+  }
+  const isImage=model.model_kind==='image';
+  const items: (UpstreamEndpoint|UpstreamImageEndpoint)[]=isImage
+   ?await imageFetcher(modelId,env.OPENROUTER_API_KEY)
+   :await fetcher(modelId,env.OPENROUTER_API_KEY);
   if(items.length===0)throw new Error('Empty endpoint response; no removal inferred');
-  const existing=await env.DB.prepare("SELECT id,provider,status,missing_count FROM endpoints WHERE model_id=? AND source='provider'").bind(modelId)
-   .all<{id:string;provider:string;status:string;missing_count:number}>();
-  const prev=new Set(existing.results.map(row=>row.id)),seen=new Set<string>(),initial=existing.results.length===0;
+  const existing=await env.DB.prepare("SELECT id,provider,tag,stable_key,status,missing_count FROM endpoints WHERE model_id=? AND source='provider'")
+   .bind(modelId).all<{id:string;provider:string;tag:string;stable_key:string|null;status:string;missing_count:number}>();
+  const prev=new Set(existing.results.map(r=>r.id));
+  const seen=new Set<string>(),initial=existing.results.filter(r=>r.status!=='superseded').length===0;
+  const assigned=new Set<string>();
   for(const item of items){
-   const provider=item.provider_name,tag=item.tag||'';
-   const variant=[item.quantization||'',String(item.service_tier||''),tag?'':item.name||''].join('|');
-   const id=await endpointId(modelId,provider,tag,variant);
-   if(seen.has(id))continue;
-   seen.add(id);
-   await applySnapshot(env,{modelId,provider,tag,source:'provider',variant,prices:parsePrices(item.pricing)},!initial&&!prev.has(id));
+   const provider=item.provider_name,tag=('provider_tag' in item?item.provider_tag:undefined)||('tag' in item?item.tag:undefined)||'';
+   const slug=('provider_slug' in item?item.provider_slug:undefined)||provider;
+   const key=stableEndpointKey(slug,tag);
+   // Legacy database keys can include quantization/tier/name. Reuse their IDs
+   // to retain historical events and price points rather than rekeying FKs.
+   const candidates=existing.results.filter(r=>r.status!=='superseded'&&
+    (r.stable_key===key||(!r.stable_key&&r.provider===provider&&r.tag===tag)));
+   const chosen=candidates.find(r=>r.status==='active')??candidates[0];
+   const id=chosen?.id??await endpointId(modelId,provider,tag);
+   if(assigned.has(key)||seen.has(id))continue;
+   assigned.add(key);seen.add(id);
+   const image=isImage?imageCharges((item as UpstreamImageEndpoint).pricing):undefined;
+   await applySnapshot(env,{modelId,provider,tag,source:'provider',variant:'',
+    prices:isImage?parsePrices({}):parsePrices((item as UpstreamEndpoint).pricing),
+    stableKey:key,existingId:chosen?.id,image,snapshotId:crypto.randomUUID()},!initial&&!prev.has(id));
+   // Historical variants of the same provider/tag no longer count as endpoints;
+   // retire them quietly, without spurious "provider removed" events.
+   for(const duplicate of candidates)if(duplicate.id!==id){
+    seen.add(duplicate.id);
+    await env.DB.prepare("UPDATE endpoints SET status='superseded',missing_count=0 WHERE id=?")
+     .bind(duplicate.id).run();
+   }
   }
   for(const row of existing.results){
-   if(seen.has(row.id)||row.status==='missing')continue;
+   if(seen.has(row.id)||row.status==='missing'||row.status==='superseded')continue;
    const count=row.missing_count+1,stmts:D1PreparedStatement[]=[
     env.DB.prepare('UPDATE endpoints SET missing_count=?,status=?,checked_at=? WHERE id=?')
      .bind(count,count>=2?'missing':'active',current,row.id)
    ];
-   if(count>=2)stmts.push(event(env,row.id,modelId,row.provider,'endpoint.removed',null,null,null,null,current));
+   if(count===2)stmts.push(event(env,row.id,modelId,row.provider,'endpoint.removed',null,null,null,null,current));
    await env.DB.batch(stmts);
   }
-  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,last_success=?,leased_until=0,last_error=NULL WHERE model_id=?').bind(current,current,modelId).run();
+  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,last_success=?,leased_until=0,last_error=NULL WHERE model_id=?')
+   .bind(current,current,modelId).run();
  }catch(e){
-  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=? WHERE model_id=?').bind(current,String(e).slice(0,200),modelId).run();
+  await env.DB.prepare('UPDATE collection_jobs SET last_checked=?,leased_until=0,last_error=? WHERE model_id=?')
+   .bind(current,String(e).slice(0,200),modelId).run();
  }
 }
 export async function emitExpiryAlerts(env:Bindings):Promise<number>{
  const current=now();
- const rows=await env.DB.prepare("SELECT m.id,m.expiration_date,e.id AS endpoint_id FROM models m JOIN endpoints e ON e.model_id=m.id AND e.source='model' WHERE m.expiration_date>? AND m.expiration_date<=? LIMIT 500")
+ const rows=await env.DB.prepare("SELECT m.id,m.expiration_date,e.id AS endpoint_id FROM models m JOIN endpoints e ON e.model_id=m.id AND e.source='model' WHERE m.lifecycle_status='active' AND m.expiration_date>? AND m.expiration_date<=? LIMIT 500")
   .bind(current,current+30*86400).all<{id:string;expiration_date:number;endpoint_id:string}>();
  const stmts:D1PreparedStatement[]=[];
  for(const row of rows.results){
@@ -218,8 +255,9 @@ export async function emitExpiryAlerts(env:Bindings):Promise<number>{
 }
 export async function runCollection(env:Bindings):Promise<void>{
  try{await refreshCatalog(env);}catch{/* Catalog error remains visible in /api/health */}
+ try{await refreshImageCatalog(env);}catch{/* Image catalogue retains its previous successful snapshot */}
  const count=modelsPerTick(env.MAX_MODELS_PER_TICK);
- const jobs=await env.DB.prepare('SELECT model_id FROM collection_jobs WHERE leased_until<? AND last_checked<? ORDER BY last_checked ASC,model_id ASC LIMIT ?')
+ const jobs=await env.DB.prepare('SELECT j.model_id FROM collection_jobs j JOIN models m ON m.id=j.model_id WHERE m.lifecycle_status='active' AND j.leased_until<? AND j.last_checked<? ORDER BY j.last_checked ASC,j.model_id ASC LIMIT ?')
   .bind(now(),now()-PROVIDER_INTERVAL_SECONDS,count).all<{model_id:string}>();
  // At most three upstream endpoint requests in flight at a time.
  for(let i=0;i<jobs.results.length;i+=3){
