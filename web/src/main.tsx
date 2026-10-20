@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,TextInput} from '@mantine/core';
+import {useDebouncedValue} from '@mantine/hooks';
 import '@mantine/core/styles.css';
 import {createRoot} from 'react-dom/client';
 import './style.css';
@@ -74,6 +75,8 @@ function App(){
  const [maxInput,setMaxInput]=useState('');
  const [compareIds,setCompareIds]=useState<string[]>([]);
  const catalogSearch=useRef<HTMLInputElement>(null);
+ const modelRequest=useRef(0);
+ const eventRequest=useRef(0);
  const detailRef=useRef<HTMLDivElement>(null);
  const [deleteWatchId,setDeleteWatchId]=useState<string|null>(null);
  const [events,setEvents]=useState<Event[]>([]);
@@ -92,6 +95,8 @@ function App(){
  const [watchDraft,setWatchDraft]=useState<{provider:string;threshold_pct:number;frequency:string;events:string[]}>({provider:'',threshold_pct:0,frequency:'instant',events:[]});
  const [notices,setNotices]=useState<Notice[]>([]);
  const [search,setSearch]=useState('');
+ const [debouncedSearch]=useDebouncedValue(search,250);
+ const [debouncedEventSearch]=useDebouncedValue(eventSearch,250);
  const [page,setPage]=useState(1);
  const [selected,setSelected]=useState<Model|null>(null);
  const [endpoints,setEndpoints]=useState<Endpoint[]>([]);
@@ -114,27 +119,29 @@ function App(){
   if(results[1].status==='fulfilled')setNotices(results[1].value.data);
  }
  async function loadModels(q:string,p:number,provider:string,order:string,author:string,modality:string,capability:string,context:string,maxPrice:string){
+  const requestId=++modelRequest.current;
   setModelLoading(true);
   try{
    const params=new URLSearchParams({q,page:String(p),limit:'30',provider,sort:order,author,modality,capability,min_context:context});
    if(maxPrice.trim())params.set('max_input_price',maxPrice);
    const r=await api<{data:Model[];total:number}>('/models?'+params.toString());
-   setModels(r.data);setModelTotal(r.total);
-  }catch(e){setError((e as Error).message);}finally{setModelLoading(false);}
+   if(requestId===modelRequest.current){setModels(r.data);setModelTotal(r.total);}
+  }catch(e){if(requestId===modelRequest.current)setError((e as Error).message);}finally{if(requestId===modelRequest.current)setModelLoading(false);}
  }
  async function loadEvents(q:string,kind:string,p:number,provider:string,start:string,end:string){
+  const requestId=++eventRequest.current;
   setLoadingEvents(true);
   try{
    const params=new URLSearchParams({q,kind,page:String(p),limit:'30',provider});
    if(start)params.set('start',String(Math.floor(new Date(start+'T00:00:00').getTime()/1000)));
    if(end)params.set('end',String(Math.floor(new Date(end+'T23:59:59').getTime()/1000)));
    const r=await api<{data:Event[];total:number}>('/events?'+params.toString());
-   setEvents(r.data);setEventTotal(r.total);
-  }catch(e){setError((e as Error).message);}finally{setLoadingEvents(false);}
+   if(requestId===eventRequest.current){setEvents(r.data);setEventTotal(r.total);}
+  }catch(e){if(requestId===eventRequest.current)setError((e as Error).message);}finally{if(requestId===eventRequest.current)setLoadingEvents(false);}
  }
  async function inspect(model:Model){
   setSelected(model);setView('catalog');setWatchProvider('');setThreshold(0);setFrequency('instant');
-  if(window.matchMedia('(max-width: 960px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'}));
+  if(window.matchMedia('(max-width: 990px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
   setEndpoints([]);setModelEvents([]);setCollection(null);
   history.replaceState(null,'','#model='+encodeURIComponent(model.id));
   try{
@@ -158,8 +165,8 @@ function App(){
   void loadPublic();
  },[]);
  useEffect(()=>{if(user)void loadPrivate();},[user]);
- useEffect(()=>{void loadModels(search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput);},[search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput]);
- useEffect(()=>{void loadEvents(eventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd);},[eventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd]);
+ useEffect(()=>{void loadModels(debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput);},[debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput]);
+ useEffect(()=>{void loadEvents(debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd);},[debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd]);
  useEffect(()=>{
   const onKey=(event:KeyboardEvent)=>{
    const el=event.target as HTMLElement;
@@ -229,8 +236,8 @@ function App(){
  }
  async function removeWatch(id:string){
   setBusy(true);
-  try{await api('/subscriptions/'+encodeURIComponent(id),{method:'DELETE'});await loadPrivate();setMessage('已删除订阅规则');}
-  catch(e){setError((e as Error).message);}finally{setBusy(false);}
+  try{await api('/subscriptions/'+encodeURIComponent(id),{method:'DELETE'});await loadPrivate();setMessage('已删除订阅规则');return true;}
+  catch(e){setError((e as Error).message);return false;}finally{setBusy(false);}
  }
  async function readNotice(id:string){
   try{await api('/notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH'});await loadPrivate();}
@@ -370,7 +377,7 @@ function App(){
         <Select id="watch-provider" searchable clearable placeholder="所有 Provider" value={watchProvider||null} onChange={v=>setWatchProvider(v||"")} data={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=>({value:p,label:p}))}/>
         <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><NumberInput id="watch-threshold" min={0} max={1000} decimalScale={2} value={threshold} onChange={v=>setThreshold(Number(v)||0)}/></div>
          <div><label htmlFor="watch-frequency">通知频率</label><Select id="watch-frequency" value={frequency} onChange={v=>setFrequency(v||"instant")} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日摘要 (UTC)"}]}/></div></div>
-        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.currentTarget.checked?[...a,id]:a.filter(k=>k!==id))}/>)}</div></details>
+        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>{const checked=e.currentTarget.checked;setKinds(a=>checked?[...a,id]:a.filter(k=>k!==id));}}/>)}</div></details>
         <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</Button>
        </div>
       </>:<div className="selection-empty"><span>▧</span><h3>{"选择一个模型"}</h3><p>{"对比 Provider 报价、查看真实变化、创建监控。"}</p><small>点击左侧模型查看详情</small></div>}</div>
@@ -401,7 +408,7 @@ function App(){
         <TextInput label="Provider" value={watchDraft.provider} placeholder="留空表示所有 Provider" onChange={e=>setWatchDraft(v=>({...v,provider:e.target.value}))}/>
         <NumberInput label="最小变化百分比" min={0} max={1000} value={watchDraft.threshold_pct} onChange={value=>setWatchDraft(v=>({...v,threshold_pct:Number(value)||0}))}/>
         <Select label="通知节奏" value={watchDraft.frequency} onChange={value=>setWatchDraft(v=>({...v,frequency:value||"instant"}))} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日汇总（UTC）"}]}/>
-        <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><Checkbox key={kind} size="xs" label={name} checked={watchDraft.events.includes(kind)} onChange={e=>setWatchDraft(v=>({...v,events:e.currentTarget.checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}))}/>)}</div></details>
+        <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><Checkbox key={kind} size="xs" label={name} checked={watchDraft.events.includes(kind)} onChange={e=>{const checked=e.currentTarget.checked;setWatchDraft(v=>({...v,events:checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}));}}/>)}</div></details>
         <div className="watch-actions"><Button className="radar-cta" loading={busy} onClick={()=>void saveWatch(w.id)}>保存</Button><button onClick={()=>setEditingWatch(null)}>取消</button></div>
        </div>}
       </div><div className="watch-actions">
@@ -435,7 +442,7 @@ function App(){
  </div>
  <Modal opened={deleteWatchId!==null} onClose={()=>setDeleteWatchId(null)} title="删除订阅规则" centered size="sm">
   <p className="modal-description">删除后将停止匹配和发送这条规则的提醒，此操作不可撤销。</p>
-  <div className="modal-actions"><Button variant="default" onClick={()=>setDeleteWatchId(null)}>取消</Button><Button color="red" loading={busy} onClick={()=>{if(deleteWatchId){void removeWatch(deleteWatchId).then(()=>setDeleteWatchId(null));}}}>确认删除</Button></div>
+  <div className="modal-actions"><Button variant="default" onClick={()=>setDeleteWatchId(null)}>取消</Button><Button color="red" loading={busy} onClick={()=>{if(deleteWatchId){void removeWatch(deleteWatchId).then(success=>{if(success)setDeleteWatchId(null);});}}}>确认删除</Button></div>
  </Modal>
  </MantineProvider>;
 }
