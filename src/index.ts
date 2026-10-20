@@ -87,7 +87,7 @@ app.get('/api/model',async c=>{
  const id=(c.req.query('id')||'').slice(0,200);
  if(!id)return c.json({error:'Missing model id'},400);
  const [model,job,endpoints]=await Promise.all([
-  c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at FROM models WHERE id=?').bind(id).first(),
+  c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at,model_kind,lifecycle_status FROM models WHERE id=?').bind(id).first(),
   c.env.DB.prepare('SELECT last_checked,last_success,last_error FROM collection_jobs WHERE model_id=?').bind(id).first<{last_checked:number;last_success:number;last_error:string|null}>(),
   c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,e.checked_at,e.first_seen FROM endpoints e WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
  ]);
