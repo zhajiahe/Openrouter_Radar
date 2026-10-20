@@ -99,3 +99,14 @@ The Durable Object alarm wakes each minute. The full model catalogue refreshes o
 - Unknown numeric pricing keys remain policy events, not unverified USD increases. Unchanged UTC override schedules which switch effective top-level rates use `price.policy_changed` with a `scheduled_*` dimension rather than unconditional increased/decreased.
 - `/api/health` reports `provider_recent` (successful scans during the preceding hour), separately from `provider_scanned` (ever scanned).
 - `/api/analytics` adds `priceDimensions` for observed price change dimensions within the requested analytics window.
+
+
+## Provider 价格稳定性（模型内比较）
+
+`GET /api/provider-stability?model_id=...&days=7|30&dimension=input` 返回相同模型和计价维度的 Provider 价格稳定性。
+
+- `stableDayRate` = `100 × (1 − 有变价记录的端点日数 / (符合条件端点数 × 窗口天数))`。同一端点同一天多次变价仅记 1 个变价端点日，但 `changeCount` 记录全部次数。
+- `changeCount`、`increaseCount`、`decreaseCount`、`maxIncreasePct`、`maxDecreasePct`、`lastChangeAt` 按实际报价变化计算；不把不同计费单位混合。
+- 只有**每个活跃端点**在统计窗口开始前或当时有真实价格基准，且该模型在最近 3 小时有成功采集时，才返回非空稳定率；否则 `status=insufficient|stale` 且 `stableDayRate=null`。
+- 该指标衡量公开标价稳定程度，不是请求成功率、推理结果质量、延迟、吞吐量或 Provider SLA；页面明确标注。
+- 实际事件显示「【输入价格】上涨」「【缓存读取价格】下降」等，使用 `eventTitle(kind,dimension)`；数据库中 `kind` 和 `dimension` 保持不变，既有订阅兼容。聚合筛选仍包含所有价格维度。

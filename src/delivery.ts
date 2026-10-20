@@ -1,5 +1,6 @@
 import { sendEmail } from './email';
 import { now, type Bindings } from './types';
+import {eventTitle,priceDimensionLabel} from './event-labels';
 
 type Pending={id:string;user_id:string;email:string;frequency:string;subscription_id:string;endpoint_id:string;snapshot_id:string|null;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number;event_id:string};
 export function deliveryGroupKey(item:Pending):string{
@@ -11,10 +12,10 @@ export function notificationText(rows:Pending[],origin:string):string{
   ...rows.map(r=>{
    const isPrice=['price.increased','price.decreased','image.price_increased','image.price_decreased'].includes(r.kind);
    const detail=isPrice&&r.old_price!==null&&r.new_price!==null
-    ? ' · '+r.dimension+': '+r.old_price+' → '+r.new_price+'（图片价格按事件所示单位；普通 Token 单价以 USD/Token 计）'
+    ? ' · '+priceDimensionLabel(r.dimension)+': '+r.old_price+' → '+r.new_price+'（请以对应计费维度的原始单位核对报价）'
     :r.kind==='model.expiring'?' · 上游标注预计在 '+(r.new_price||'?')+' 天窗口内到期'
     :r.dimension?' · '+r.dimension+': '+(r.old_price||'未知').slice(0,100)+' → '+(r.new_price||'未知').slice(0,100):'';
-   return '• '+r.model_id+' / '+r.provider+' — '+r.kind+detail;
+   return '• '+r.model_id+' / '+r.provider+' — '+eventTitle(r.kind,r.dimension)+detail;
   }), '', '查看或管理订阅：'+new URL('/',origin).toString(),
   '你收到此邮件是因为订阅了 Radar 的模型监控事件。'];
  return lines.join('\n');
@@ -36,7 +37,7 @@ export async function deliverPending(env:Bindings):Promise<number>{
  }
  let count=0;
  for(const rows of [...groups.values()].slice(0,20)){
-  const subject=rows.length===1?'[Radar] '+rows[0].model_id+'：'+rows[0].kind:'[Radar] '+rows[0].model_id+' 等 '+rows.length+' 项监控变化';
+  const subject=rows.length===1?'[Radar] '+rows[0].model_id+'：'+eventTitle(rows[0].kind,rows[0].dimension):'[Radar] '+rows[0].model_id+' 等 '+rows.length+' 项监控变化';
   // Stable across the same send attempt even when a worker retries.
   const ids=rows.map(x=>x.id).sort().join(',');
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ids));

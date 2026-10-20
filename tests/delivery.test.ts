@@ -10,6 +10,18 @@ test('notification emails include event context and management link',()=>{
  }], 'https://radar.example.com');
  assert.match(msg,/test\/model/);
  assert.match(msg,/Example/);
- assert.match(msg,/price.decreased/);
+ assert.match(msg,/【输入价格】下降/);
  assert.match(msg,/radar.example.com/);
+});
+
+test('email price notices name the cache dimension instead of a generic increase',()=>{
+ const msg=notificationText([{
+  id:'2',user_id:'u',email:'a@b.test',frequency:'instant',
+  subscription_id:'watch2',endpoint_id:'endpoint2',snapshot_id:null,
+  model_id:'example/model',provider:'P',kind:'price.increased',dimension:'cache_read',
+  old_price:'0.000001',new_price:'0.000002',change_pct:100,created_at:2,event_id:'event2'
+ }],'https://radar.example.com');
+ assert.match(msg,/【缓存读取价格】上涨/);
+ assert.match(msg,/缓存读取价格/);
+ assert.doesNotMatch(msg,/price.increased/);
 });

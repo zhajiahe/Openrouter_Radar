@@ -62,6 +62,9 @@ for(const width of widths){
    await expect(page.locator('.detail-panel')).toContainText(MODEL_ID);
    await expect(page.getByRole('heading',{name:'Provider 报价'})).toBeVisible();
    await expect(page.locator('.radar-provider-table tbody tr')).toHaveCount(2);
+   await expect(page.getByRole('heading',{name:'Provider 价格稳定性'})).toBeVisible();
+   await expect(page.locator('.provider-stability-table tbody tr')).toHaveCount(2);
+   await expect(page.locator('.provider-stability-table')).toContainText('历史不足');
    await expect(page.getByRole('columnheader',{name:'Cache Read'})).toBeVisible();
    await expect(page.locator('.radar-provider-table')).toContainText('$0.15');
    await expect(page.locator('.historic-card')).toContainText('实际观测点');
@@ -91,6 +94,8 @@ for(const width of widths){
    const nav=page.getByRole('navigation',{name:'主要导航'});
    await nav.getByRole('button',{name:'Changes'}).click();
    await expect(page.locator('.events-table tbody tr')).toHaveCount(3);
+   await expect(page.locator('.events-table')).toContainText('【输入价格】下降');
+   await expect(page.locator('.events-table')).toContainText('【输出价格】上涨');
    await checkDocument(page,width);
    await capture(page,`${width}/changes.png`);
    await nav.getByRole('button',{name:'通知'}).click();

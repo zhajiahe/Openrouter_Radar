@@ -57,6 +57,18 @@ function dataFor(url:URL):object{
   return {data:selected,unit:image?'mixed':'USD/token',method:'observed_baseline_and_change_points',retention_days:180,window_start:now-90*86400,
    dimensions:image?[]:[{dimension:'input',unit:'USD/token'},{dimension:'output',unit:'USD/token'},{dimension:'cache_read',unit:'USD/token'},{dimension:'cache_write',unit:'USD/token'},{dimension:'cache_write_1h',unit:'USD/token'}]};
  }
+ if(path==='/api/provider-stability'){
+  const days=url.searchParams.get('days')==='7'?7:30;
+  const dimension=url.searchParams.get('dimension')||'input';
+  const id=url.searchParams.get('model_id')||MODEL_ID;
+  const rows=[
+   {provider:'Provider With A Long Name',status:'ready',endpointCount:1,coveredEndpoints:1,freshEndpoints:1,changeCount:1,increaseCount:0,decreaseCount:1,changedEndpointDays:1,stableDayRate:100-100/days,maxIncreasePct:null,maxDecreasePct:25,lastChangeAt:now-2*86400,lastScanAt:now-1800,unit:'USD/token'},
+   {provider:'Fast Provider',status:'insufficient',endpointCount:1,coveredEndpoints:0,freshEndpoints:1,changeCount:0,increaseCount:0,decreaseCount:0,changedEndpointDays:0,stableDayRate:null,maxIncreasePct:null,maxDecreasePct:null,lastChangeAt:null,lastScanAt:now-1600,unit:null}
+  ];
+  return {model_id:id,days,from:now-days*86400,to:now,dimension,unit:'USD/token',
+   dimensions:[{dimension:'input',unit:'USD/token',endpoints:2},{dimension:'output',unit:'USD/token',endpoints:2},{dimension:'cache_read',unit:'USD/token',endpoints:2}],
+   data:rows,metric:'unchanged_endpoint_days_pct'};
+ }
  if(path==='/api/events'){
   const model=url.searchParams.get('model_id')||'';
   const provider=url.searchParams.get('provider')||'';

@@ -3,6 +3,7 @@ import {BarChart,DonutChart} from '@mantine/charts';
 import {ActionIcon,Button,Group,Loader,Progress,SegmentedControl,Select,Text} from '@mantine/core';
 import {Activity,ArrowUpRight,RefreshCw} from 'lucide-react';
 import './data-visualization.css';
+import {priceDimensionLabel} from '../../src/event-labels';
 
 type DailyPoint={date:string;total:number;priceUp:number;priceDown:number;lifecycle:number;other:number};
 type ModelKind={kind:string;count:number};
@@ -63,7 +64,7 @@ export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(
    <small>{loading?'同步中…':'最近更新 '+updated}</small>
   </div>
   {error&&<div className="chart-inline-error" role="alert">{error}<Button variant="light" size="xs" onClick={()=>setRefreshToken(v=>v+1)}>重试</Button></div>}
-  {visibleData?.priceDimensions?.length?<div className="chart-dimensions" aria-label="价格调整维度">{visibleData.priceDimensions.map(item=><span key={item.dimension}>{item.dimension.replaceAll('_',' ')} · {number(item.count)}</span>)}</div>:null}
+  {visibleData?.priceDimensions?.length?<div className="chart-dimensions" aria-label="价格调整维度">{visibleData.priceDimensions.map(item=><span key={item.dimension}>{priceDimensionLabel(item.dimension)} · {number(item.count)}</span>)}</div>:null}
   <div className="analytics-grid">
    <section className="chart-panel chart-panel-wide" aria-labelledby="activity-title">
     <div className="chart-heading"><div><h3 id="activity-title">每日变动趋势</h3><p>UTC 日期聚合，柱状图支持悬停和键盘查看</p></div><strong>{visibleData?number(totalEvents):'—'} 项</strong></div>

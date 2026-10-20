@@ -8,6 +8,8 @@ import { ALARM_INTERVAL_MS } from './scheduler';
 import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
 import { PRICE_FIELDS } from './pricing';
+import {eventTitle} from './event-labels';
+import {summarizeProviderPriceStability,type ProviderEndpoint,type PriceObservation} from './provider-stability';
 export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
@@ -123,6 +125,39 @@ app.get('/api/model',async c=>{
    missing_endpoints:endpoints.results.filter(ep=>ep.source==='provider'&&ep.status==='missing').length};
  return c.json({model,endpoints:endpoints.results,collection});
 });
+app.get('/api/provider-stability',async c=>{
+ const modelId=(c.req.query('model_id')||'').trim().slice(0,200);
+ if(!modelId)return c.json({error:'model_id is required'},400);
+ const days:7|30=c.req.query('days')==='7'?7:30;
+ const timestamp=now(),start=timestamp-days*86400;
+ const dims=await c.env.DB.prepare(`SELECT o.dimension,o.unit,COUNT(DISTINCT o.endpoint_id) AS endpoints
+  FROM price_observations o JOIN endpoints e ON e.id=o.endpoint_id
+  WHERE e.model_id=? AND e.source='provider' AND e.status='active'
+  GROUP BY o.dimension,o.unit ORDER BY o.dimension,o.unit LIMIT 80`)
+  .bind(modelId).all<{dimension:string;unit:string;endpoints:number}>();
+ const allDimensions=dims.results||[];
+ const dimension=(c.req.query('dimension')||'').slice(0,250)||allDimensions[0]?.dimension||'input';
+ if(!allDimensions.some(d=>d.dimension===dimension)&&c.req.query('dimension'))
+  return c.json({error:'dimension has no observed price for this model'},400);
+ const endpoints=await c.env.DB.prepare(`SELECT e.id,e.provider,e.tag,j.last_success
+  FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id
+  WHERE e.model_id=? AND e.source='provider' AND e.status='active'
+  ORDER BY e.provider COLLATE NOCASE,e.tag`).bind(modelId).all<ProviderEndpoint>();
+ const observations=await c.env.DB.prepare(`SELECT o.endpoint_id,o.dimension,o.unit,o.price,o.observed_at
+  FROM price_observations o WHERE o.model_id=? AND o.source='provider'
+  AND o.dimension=? AND o.observed_at<=?
+  AND (o.observed_at>? OR o.observed_at=(
+   SELECT MAX(old.observed_at) FROM price_observations old
+   WHERE old.endpoint_id=o.endpoint_id AND old.dimension=o.dimension AND old.observed_at<=?
+  )) ORDER BY o.endpoint_id,o.observed_at LIMIT 5001`)
+  .bind(modelId,dimension,timestamp,start,start).all<PriceObservation>();
+ if(observations.results.length>5000)return c.json({error:'too many observations; narrow the price dimension'},422);
+ const data=summarizeProviderPriceStability(endpoints.results||[],observations.results||[],days,timestamp);
+ return c.json({model_id:modelId,days,from:start,to:timestamp,dimension,
+  unit:allDimensions.find(d=>d.dimension===dimension)?.unit||null,dimensions:allDimensions,
+  data,metric:'unchanged_endpoint_days_pct',
+  note:'Price-only indicator: real observed price-change days, not availability, latency, throughput or inference success. Full-window baseline and recent model scan required.'});
+});
 app.get('/api/price-history',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
  const provider=(c.req.query('provider')||'').slice(0,150);
@@ -201,7 +236,7 @@ app.get('/feed.xml',async c=>{
  const origin=c.env.APP_ORIGIN.replace(/\/$/,'');
  const xml='<?xml version="1.0" encoding="UTF-8"?>'+
  '<rss version="2.0"><channel><title>OpenRouter Radar changes</title><link>'+escape(origin)+'</link><description>Price and provider endpoint changes</description><atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="'+escape(origin+'/feed.xml?page='+page)+'" rel="self" type="application/rss+xml"/>'+
- items.results.map(e=>'<item><guid isPermaLink="false">'+escape(e.id)+'</guid><title>'+escape(e.model_id+' / '+e.provider+' — '+e.kind)+'</title><description>'+escape((e.dimension||'')+' '+(e.old_price||'')+' → '+(e.new_price||''))+'</description><pubDate>'+new Date(e.created_at*1000).toUTCString()+'</pubDate></item>').join('')+'</channel></rss>';
+ items.results.map(e=>'<item><guid isPermaLink="false">'+escape(e.id)+'</guid><title>'+escape(e.model_id+' / '+e.provider+' — '+eventTitle(e.kind,e.dimension))+'</title><description>'+escape((e.dimension||'')+' '+(e.old_price||'')+' → '+(e.new_price||''))+'</description><pubDate>'+new Date(e.created_at*1000).toUTCString()+'</pubDate></item>').join('')+'</channel></rss>';
  return c.body(xml,200,{'Content-Type':'application/rss+xml; charset=utf-8'});
 });
 app.get('/api/subscriptions',requireAuth,async c=>{
