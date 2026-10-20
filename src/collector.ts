@@ -5,7 +5,7 @@ import {modelState,modelDeltas,expiryWindow,type ModelState} from './phase3';
 import {now,type Bindings,type EventKind} from './types';
 import {historyStatements,missingHistoryStatements,prunePriceHistory} from './history';
 
-type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number;history_seeded:number};
+type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number;history_seeded:number;stable_key:string|null};
 type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string;model_kind:string;lifecycle_status:string;missing_count:number};
 type Observation={modelId:string;provider:string;tag:string;source:'model'|'provider';variant:string;prices:Prices;stableKey?:string;existingId?:string;image?:ImageCharge[];snapshotId?:string};
 type EventRow={id:string;model_id:string;provider:string;kind:EventKind;dimension:string|null;change_pct:number|null;created_at:number};
@@ -126,8 +126,8 @@ async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
   if(sub.provider!==null&&sub.provider!==record.provider)continue;
   let selected:string[];try{selected=JSON.parse(sub.events_json);}catch{continue;}
   if(!selected.includes(record.kind))continue;
-  if((record.kind==='price.increased'||record.kind==='price.decreased')&&!thresholdMatches(record.change_pct,sub.threshold_pct))continue;
-  const scheduled=sub.frequency==='daily'?Math.ceil((record.created_at-8*3600)/86400)*86400+8*3600:now();
+  if((record.kind==='price.increased'||record.kind==='price.decreased'||record.kind==='image.price_increased'||record.kind==='image.price_decreased')&&!thresholdMatches(record.change_pct,sub.threshold_pct))continue;
+  const scheduled=sub.frequency==='daily'?Math.ceil((record.created_at-8*3600)/86400)*86400+8*3600:now()+120; // brief grace lets all dimensions finish matching
   stmts.push(env.DB.prepare("INSERT OR IGNORE INTO notifications (id,user_id,event_id,subscription_id,next_attempt_at,created_at) VALUES(?,?,?,?,?,?)")
    .bind(crypto.randomUUID(),sub.user_id,record.id,sub.id,scheduled,record.created_at));
 
@@ -143,7 +143,7 @@ export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<numbe
 export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false):Promise<void>{
  const {modelId,provider,tag,source,variant,prices}=o,id=o.existingId??await endpointId(modelId,provider,tag,variant);
  const raw=o.image?imageRaw(o.image):prices.raw;
- const previous=await env.DB.prepare('SELECT id,input_price,output_price,pricing_json,status,missing_count,history_seeded FROM endpoints WHERE id=?').bind(id).first<Existing>();
+ const previous=await env.DB.prepare('SELECT id,input_price,output_price,pricing_json,status,missing_count,history_seeded,stable_key FROM endpoints WHERE id=?').bind(id).first<Existing>();
  const ts=now();
  if(!previous){
   const stmts:D1PreparedStatement[]=[
@@ -159,7 +159,7 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
   :findPriceChanges(storedPrices(previous.pricing_json),prices);
  // A successful sweep is recorded on collection_jobs. Do not rewrite identical
  // endpoint rows every hour, which would exhaust D1 Free daily write limits.
- if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1)return;
+ if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null))return;
  const stmts:D1PreparedStatement[]=[
   env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1,stable_key=? WHERE id=?")
    .bind(prices.prompt,prices.completion,JSON.stringify(raw),ts,o.stableKey??null,id)
