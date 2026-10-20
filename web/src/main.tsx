@@ -1,9 +1,12 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {Alert,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,TextInput} from '@mantine/core';
+import '@mantine/core/styles.css';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 import './router-inspired.css';
 import './monitoring.css';
 import './preferences.css';
+import './component-library.css';
 import {PriceHistory,CompareModels} from './monitoring';
 import {AnalyticsDashboard} from './analytics';
 
@@ -71,6 +74,8 @@ function App(){
  const [maxInput,setMaxInput]=useState('');
  const [compareIds,setCompareIds]=useState<string[]>([]);
  const catalogSearch=useRef<HTMLInputElement>(null);
+ const detailRef=useRef<HTMLDivElement>(null);
+ const [deleteWatchId,setDeleteWatchId]=useState<string|null>(null);
  const [events,setEvents]=useState<Event[]>([]);
  const [recentEvents,setRecentEvents]=useState<Event[]>([]);
  const [modelEvents,setModelEvents]=useState<Event[]>([]);
@@ -129,6 +134,7 @@ function App(){
  }
  async function inspect(model:Model){
   setSelected(model);setView('catalog');setWatchProvider('');setThreshold(0);setFrequency('instant');
+  if(window.matchMedia('(max-width: 960px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'}));
   setEndpoints([]);setModelEvents([]);setCollection(null);
   history.replaceState(null,'','#model='+encodeURIComponent(model.id));
   try{
@@ -222,9 +228,9 @@ function App(){
   return '/api/events/export?'+params.toString();
  }
  async function removeWatch(id:string){
-  if(!confirm('确定取消这条监控订阅吗？'))return;
-  try{await api('/subscriptions/'+encodeURIComponent(id),{method:'DELETE'});await loadPrivate();}
-  catch(e){setError((e as Error).message);}
+  setBusy(true);
+  try{await api('/subscriptions/'+encodeURIComponent(id),{method:'DELETE'});await loadPrivate();setMessage('已删除订阅规则');}
+  catch(e){setError((e as Error).message);}finally{setBusy(false);}
  }
  async function readNotice(id:string){
   try{await api('/notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH'});await loadPrivate();}
@@ -243,7 +249,7 @@ function App(){
  const scanned=status.provider_scanned??0;
  const total=status.provider_total??stats.models;
  const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
- return <div className="layout">
+ return <MantineProvider forceColorScheme={theme} theme={{primaryColor:"violet",defaultRadius:"md",fontFamily:"Inter, PingFang SC, Noto Sans SC, system-ui, sans-serif",respectReducedMotion:true}}><div className="layout">
   <aside className="sidebar">
    <div className="brand"><span className="brand-icon" aria-hidden="true">◈</span><span>OpenRouter <b>Radar</b></span></div>
    <div className="side-caption">MODEL MONITORING</div>
@@ -263,8 +269,8 @@ function App(){
     </div>
    </header>
    <div className="content">
-    {error&&<div className="toast error" role="alert">{error}<button type="button" aria-label="关闭错误提示" onClick={()=>setError('')}>×</button></div>}
-    {message&&<div className="toast success" role="status">{message}<button type="button" aria-label="关闭成功提示" onClick={()=>setMessage('')}>×</button></div>}
+    {error&&<Alert className="radar-alert" color="red" title="操作失败" role="alert">{error}<button type="button" className="alert-close" aria-label="关闭错误提示" onClick={()=>setError('')}>×</button></Alert>}
+    {message&&<Alert className="radar-alert" color="green" title="操作成功" role="status">{message}<button type="button" className="alert-close" aria-label="关闭成功提示" onClick={()=>setMessage('')}>×</button></Alert>}
     {view==='overview'&&<>
      <div className="hero">
       <div className="hero-copy">
@@ -272,7 +278,7 @@ function App(){
        <h1>Model prices,<br/><span className="accent">under your radar.</span></h1>
        <p>{"模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。浏览公开数据，订阅你在意的变动。"}</p>
        <div className="hero-actions">
-        <button className="primary" onClick={()=>setView('catalog')}>{"探索模型目录"} <span aria-hidden="true">↗</span></button>
+        <Button className="radar-cta" color="dark" onClick={()=>setView('catalog')}>探索模型目录 ↗</Button>
         <span className="hero-secondary">{"每小时采集 · 无需访客 API Key"}</span>
        </div>
       </div>
@@ -337,12 +343,12 @@ function App(){
         </button>
         <button className={'compare-add '+(compareIds.includes(m.id)?'selected':'')} onClick={()=>toggleCompare(m.id)} aria-pressed={compareIds.includes(m.id)} aria-label={compareIds.includes(m.id)?'从对比移除 '+m.name:'加入模型对比 '+m.name}>{compareIds.includes(m.id)?'✓':'+'}</button>
        </div>)}
-       {modelLoading&&<div className="empty" role="status">{"正在加载模型"}…</div>}
+       {modelLoading&&<div className="empty loading-state" role="status"><Loader size="sm" /> 正在加载模型…</div>}
        {!modelLoading&&!models.length&&<div className="empty">{"没有匹配的模型。清除筛选，或等待下一次采集。"}</div>}</div>
        {compareIds.length>0&&<div className="compare-toolbar"><span>已选 {compareIds.length}/3 个模型</span><button onClick={()=>setCompareIds([])}>清空</button></div>}
-       <div className="pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Previous</button><span>{page} / {Math.max(1,Math.ceil(modelTotal/30))}</span><button disabled={page*30>=modelTotal} onClick={()=>setPage(p=>p+1)}>Next →</button></div>
+       <div className="pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(modelTotal/30))} value={page} onChange={setPage}/></div>
       </div>
-      <div className="panel detail-panel">{selected?<>
+      <div className="panel detail-panel" ref={detailRef}>{selected?<>
        <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}>{"复制链接"} ↗</button></div>
        <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code>{selected.lifecycle_status==='removed'&&<span className="event-tag">已确认下架 · 等待恢复</span>}{selected.model_kind==='image'&&<span className="event-tag">图片生成模型</span>}</div></div>
        <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{collection?.active_endpoints??0}</strong> Active endpoints</span></div>
@@ -368,7 +374,7 @@ function App(){
         <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><input id="watch-threshold" type="number" min="0" max="1000" value={threshold} onChange={e=>setThreshold(Number(e.target.value))}/></div>
          <div><label htmlFor="watch-frequency">通知频率</label><select id="watch-frequency" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="instant">尽快通知</option><option value="daily">每日摘要 (UTC)</option></select></div></div>
         <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><label key={id}><input type="checkbox" checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.target.checked?[...a,id]:a.filter(k=>k!==id))}/>{text}</label>)}</div></details>
-        <button className="primary full" disabled={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</button>
+        <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</Button>
        </div>
       </>:<div className="selection-empty"><span>▧</span><h3>{"选择一个模型"}</h3><p>{"对比 Provider 报价、查看真实变化、创建监控。"}</p><small>点击左侧模型查看详情</small></div>}</div>
      </div>
@@ -384,9 +390,9 @@ function App(){
       <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
       <a href={exportUrl('csv')}>CSV ↧</a><a href={exportUrl('json')}>JSON ↧</a><small>每次导出最多 1,000 条事件</small></div>
      <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
-     <div className="pager events-pager"><button disabled={eventPage<=1} onClick={()=>setEventPage(p=>p-1)}>← Previous</button><span>{eventPage} / {Math.max(1,Math.ceil(eventTotal/30))}</span><button disabled={eventPage*30>=eventTotal} onClick={()=>setEventPage(p=>p+1)}>Next →</button></div>
+     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
     </>}
-    {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><button className="primary" onClick={()=>setView('catalog')}>+ 新建订阅</button></div>
+    {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><Button className="radar-cta" onClick={()=>setView('catalog')}>+ 新建订阅</Button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
       {watches.length?<div className="watch-grid">{watches.map(w=><div className={'watch-card '+(w.paused?'is-paused':'')} key={w.id}><div>
        <div className="watch-topline"><span className="light-tag">{w.provider||'所有 Provider'}</span><span className={w.paused?'tag':'light-tag'}>{w.paused?'已暂停':'监控中'}</span></div>
@@ -399,12 +405,12 @@ function App(){
         <label>最小变化百分比 <input type="number" min="0" max="1000" value={watchDraft.threshold_pct} onChange={e=>setWatchDraft(v=>({...v,threshold_pct:Number(e.target.value)}))}/></label>
         <label>通知节奏 <select value={watchDraft.frequency} onChange={e=>setWatchDraft(v=>({...v,frequency:e.target.value}))}><option value="instant">尽快通知</option><option value="daily">每日汇总（UTC）</option></select></label>
         <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><label key={kind}><input type="checkbox" checked={watchDraft.events.includes(kind)} onChange={e=>setWatchDraft(v=>({...v,events:e.target.checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}))}/>{name}</label>)}</div></details>
-        <div className="watch-actions"><button className="primary" disabled={busy} onClick={()=>void saveWatch(w.id)}>保存</button><button onClick={()=>setEditingWatch(null)}>取消</button></div>
+        <div className="watch-actions"><Button className="radar-cta" loading={busy} onClick={()=>void saveWatch(w.id)}>保存</Button><button onClick={()=>setEditingWatch(null)}>取消</button></div>
        </div>}
       </div><div className="watch-actions">
        <button onClick={()=>editingWatch===w.id?setEditingWatch(null):startEditWatch(w)}>{editingWatch===w.id?'收起编辑':'编辑规则'}</button>
        <button onClick={()=>void togglePaused(w)}>{w.paused?'恢复提醒':'暂停提醒'}</button>
-       <button className="delete" onClick={()=>void removeWatch(w.id)}>删除</button>
+       <button className="delete" onClick={()=>setDeleteWatchId(w.id)}>删除</button>
       </div></div>)}</div>:<div className="empty roomy">还没有任何订阅。进入模型目录，选择你想关注的模型。</div>}</div>}
     </>}
     {view==='notices'&&<><div className="page-heading"><div><div className="eyebrow">YOUR ALERTS</div><h1>{"通知中心"}</h1><p>站内记录每次命中订阅规则的事件，邮件发送状态同步展示。</p></div></div>
@@ -420,7 +426,7 @@ function App(){
      <form onSubmit={e=>void submitAuth(e)}>
       {authMode!=='reset'&&<><label>电子邮箱</label><input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></>}
       {authMode!=='forgot'&&<><label>密码（至少 12 个字符）</label><input required minLength={12} type="password" autoComplete={authMode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)}/></>}
-      <button disabled={busy} className="primary full" type="submit">{busy?'处理中…':authMode==='register'?'注册并发送验证邮件':authMode==='forgot'?'发送重置邮件':authMode==='reset'?'重置密码':'登录'}</button>
+      <Button className="radar-cta" fullWidth loading={busy} type="submit">{authMode==='register'?'注册并发送验证邮件':authMode==='forgot'?'发送重置邮件':authMode==='reset'?'重置密码':'登录'}</Button>
      </form><div className="auth-actions">
       <button onClick={()=>{setAuthMode(authMode==='register'?'login':'register');setError('');}}> {authMode==='register'?'已有账号？登录':'没有账号？注册'}</button>
       <button onClick={()=>{setAuthMode('forgot');setError('');}}>忘记密码？</button>
@@ -429,9 +435,14 @@ function App(){
     </>}
    </div>
   </main>
- </div>;
+ </div>
+ <Modal opened={deleteWatchId!==null} onClose={()=>setDeleteWatchId(null)} title="删除订阅规则" centered size="sm">
+  <p className="modal-description">删除后将停止匹配和发送这条规则的提醒，此操作不可撤销。</p>
+  <div className="modal-actions"><Button variant="default" onClick={()=>setDeleteWatchId(null)}>取消</Button><Button color="red" loading={busy} onClick={()=>{if(deleteWatchId){void removeWatch(deleteWatchId).then(()=>setDeleteWatchId(null));}}}>确认删除</Button></div>
+ </Modal>
+ </MantineProvider>;
 }
-function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><button className="primary" onClick={onLogin}>注册 / 登录 →</button></div>}
+function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
  return <div className="panel table-panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
  {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td><span>{formatEvent(e)}</span></td><td><small>{time(e.created_at)}</small></td></tr>)}
