@@ -93,3 +93,54 @@ html[data-theme="dark"] .pager .mantine-Pagination-control[data-active]{backgrou
 @media(prefers-reduced-motion:reduce){
   .layout .mantine-Input-input,.radar-cta.mantine-Button-root{transition:none}
 }
+
+
+/* Shared icon, information hierarchy and dense tabular primitives */
+.layout .nav-icon{display:inline-block;width:17px;height:17px;flex:none;stroke-width:1.8;color:currentColor}
+.layout .brand-icon{display:grid;place-items:center}
+.layout .metric-label>svg{flex:none;color:var(--radar-accent)}
+.layout .account-button{display:inline-flex;align-items:center;gap:7px}
+.layout .preference-controls button{display:grid;place-items:center}
+.layout .text-action,.layout .filter-note a,.layout .clear-filters,.layout .event-export-bar a{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.layout .search-glyph{position:absolute;top:50%;left:13px;transform:translateY(-50%);z-index:1;color:var(--radar-text-tertiary);pointer-events:none}
+.layout .scanner-icon{background:var(--radar-surface-soft);color:var(--radar-accent);padding:5px}
+.layout .compare-add{display:grid;place-items:center}
+.layout .alert-close{display:grid;place-items:center}
+.layout .selection-empty>span{display:grid;place-items:center}
+.layout .avatar{display:grid;place-items:center}
+.layout .detail-model-head{align-items:start}
+.layout .detail-model-head>div{min-width:0}
+.layout .detail-model-head h2{line-height:1.3;overflow-wrap:anywhere}
+.layout .detail-quick-stats{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(2,minmax(0,1fr));gap:10px;margin:17px 0 13px}
+.layout .detail-quick-stats>div{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:12px;border:1px solid var(--radar-border);background:var(--radar-surface-soft);border-radius:8px}
+.layout .detail-quick-stats span{color:var(--radar-text-muted);font-size:11px}
+.layout .detail-quick-stats strong{font-size:clamp(16px,1.8vw,22px);font-weight:730;line-height:1.5;color:var(--radar-text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.layout .detail-quick-stats small{color:var(--radar-text-tertiary);font-size:10px;line-height:1.5}
+.layout .detail-quick-price strong{color:var(--radar-accent)}
+.layout .detail-health{display:flex;align-items:center;flex-wrap:wrap;gap:8px 13px;padding:9px 0 14px;border-bottom:1px solid var(--radar-border);font-size:11px;color:var(--radar-text-muted)}
+.layout .detail-health p{width:100%;margin:0;color:var(--radar-warning);font-size:11px}
+.layout .detail-section-head{margin-top:20px}
+.layout .detail-section-head h3{font-size:14px}
+.layout .detail-section-head small{font-size:11px;line-height:1.5}
+.layout .scroll-x{overflow-x:auto;max-width:100%}
+.layout .radar-data-table{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+.layout .radar-data-table th{background:var(--radar-surface-soft);color:var(--radar-text-muted);font-size:11px;font-weight:650;letter-spacing:0;text-transform:none;white-space:nowrap;padding:11px 12px;border-bottom:1px solid var(--radar-border)}
+.layout .radar-data-table td{padding:11px 12px;border-bottom:1px solid var(--radar-border);line-height:1.55;color:var(--radar-text);vertical-align:middle}
+.layout .radar-data-table tbody tr:hover{background:var(--radar-surface-soft)}
+.layout .radar-data-table .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.layout .radar-data-table td strong{font-size:12px;color:var(--radar-text);font-weight:650;word-break:break-word}
+.layout .radar-data-table .time-cell{white-space:nowrap;color:var(--radar-text-muted);font-size:11px}
+.layout .radar-data-table .table-description{min-width:165px;max-width:340px;overflow-wrap:anywhere}
+.layout .provider-cell-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--radar-text-tertiary);font-size:10px;margin-top:6px}
+.layout .radar-provider-table{min-width:520px}
+.layout .radar-provider-table td:first-child{min-width:145px}
+.layout .events-table{min-width:690px}
+.layout .events-table td:first-child{min-width:190px;max-width:290px}
+.layout .events-table td:first-child strong{overflow-wrap:anywhere}
+.layout .events-table td .cell-small{display:block;overflow-wrap:anywhere;margin-top:4px;font-size:10px}
+@media(max-width:700px){
+ .layout .detail-quick-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .layout .detail-quick-price{grid-column:1/-1}
+ .layout .detail-quick-stats>div{padding:10px}
+ .layout .nav-link{gap:6px}
+}
