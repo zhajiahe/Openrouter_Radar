@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,Table,TextInput} from '@mantine/core';
-import {Activity,ArrowRight,Bell,Bookmark,Check,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,Sun,UserRound,X} from 'lucide-react';
+import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,Sun,UserRound,X} from 'lucide-react';
 import {useDebouncedValue} from '@mantine/hooks';
 import '@mantine/core/styles.css';
 import {createRoot} from 'react-dom/client';
@@ -302,12 +302,6 @@ function App(){
         <span className="hero-secondary">{"每小时采集 · 无需访客 API Key"}</span>
        </div>
       </div>
-      <div className="radar-visual" aria-hidden="true">
-       <i className="radar-ring"/><i className="radar-ring"/><i className="radar-ring"/>
-       <i className="radar-sweep"/><i className="radar-ping one"/><i className="radar-ping two"/><i className="radar-ping three"/>
-       <span className="radar-core">◉</span>
-       <span className="hero-radar-label">SIGNAL DETECTION · ACTIVE</span>
-      </div>
      </div>
      <div className="metrics">
       {[{value:stats.models,label:'模型总数',icon:Layers,note:'目录内公开模型'},{value:stats.providers,label:'活跃 Provider',icon:Activity,note:'已发现的服务商'},{value:scanned,label:'已采集模型',icon:Radar,note:'Provider 快照覆盖量'},{value:stats.events24h,label:'24 小时事件',icon:History,note:'过去一天的真实变化'}].map(({value,label,icon:Icon,note})=>
@@ -395,8 +389,8 @@ function App(){
         <Select id="watch-provider" searchable clearable placeholder="所有 Provider" value={watchProvider||null} onChange={v=>setWatchProvider(v||"")} data={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=>({value:p,label:p}))}/>
         <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><NumberInput id="watch-threshold" min={0} max={1000} decimalScale={2} value={threshold} onChange={v=>setThreshold(Number(v)||0)}/></div>
          <div><label htmlFor="watch-frequency">通知频率</label><Select id="watch-frequency" value={frequency} onChange={v=>setFrequency(v||"instant")} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日摘要 (UTC)"}]}/></div></div>
-        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>{const checked=e.currentTarget.checked;setKinds(a=>checked?[...a,id]:a.filter(k=>k!==id));}}/>)}</div></details>
-        <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</Button>
+        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 <ChevronDown size={13} aria-hidden="true"/></span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>{const checked=e.currentTarget.checked;setKinds(a=>checked?[...a,id]:a.filter(k=>k!==id));}}/>)}</div></details>
+        <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} <ArrowRight size={15}/></Button>
        </div>
       </>:<div className="selection-empty"><span><Layers size={26}/></span><h3>{"选择一个模型"}</h3><p>{"对比 Provider 报价、查看真实变化、创建监控。"}</p><small>点击左侧模型查看详情</small></div>}</div>
      </div>
