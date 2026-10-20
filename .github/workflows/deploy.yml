@@ -49,7 +49,6 @@ jobs:
           APP_ORIGIN: ${{ vars.APP_ORIGIN }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
           OPEN_SIGNUP: ${{ vars.OPEN_SIGNUP }}
-          WEBHOOK_ALLOWED_HOSTS: ${{ vars.WEBHOOK_ALLOWED_HOSTS }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
@@ -59,7 +58,6 @@ jobs:
           if(process.env.APP_ORIGIN) c.vars.APP_ORIGIN=process.env.APP_ORIGIN;
           if(process.env.MAIL_FROM) c.vars.MAIL_FROM=process.env.MAIL_FROM;
           if(process.env.OPEN_SIGNUP) c.vars.OPEN_SIGNUP=process.env.OPEN_SIGNUP;
-          if(process.env.WEBHOOK_ALLOWED_HOSTS) c.vars.WEBHOOK_ALLOWED_HOSTS=process.env.WEBHOOK_ALLOWED_HOSTS;
           if(!/^[a-f0-9-]{36}$/i.test(c.d1_databases[0].database_id))throw new Error('A valid D1 database_id is required');
           if(!c.vars.APP_ORIGIN.startsWith('https://'))throw new Error('Production APP_ORIGIN must use HTTPS');
           fs.writeFileSync('wrangler.deploy.json',JSON.stringify(c,null,2));
@@ -77,14 +75,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const secrets={OPENROUTER_API_KEY:process.env.OPENROUTER_API_KEY};
           if(process.env.RESEND_API_KEY)secrets.RESEND_API_KEY=process.env.RESEND_API_KEY;
-          if(process.env.TELEGRAM_BOT_TOKEN)secrets.TELEGRAM_BOT_TOKEN=process.env.TELEGRAM_BOT_TOKEN;
           fs.writeFileSync('.radar-secrets.json',JSON.stringify(secrets),{mode:0o600});
           NODE
           trap 'rm -f .radar-secrets.json' EXIT
