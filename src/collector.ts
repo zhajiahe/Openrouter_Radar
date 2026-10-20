@@ -101,7 +101,7 @@ async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
  await env.DB.batch(stmts);
 }
 export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<number>{
- const records=await env.DB.prepare("SELECT id,model_id,provider,kind,dimension,change_pct,created_at FROM price_events WHERE matched_at IS NULL ORDER BY created_at ASC LIMIT ?").bind(limit).all<EventRow>();
+ const records=await env.DB.prepare("SELECT id,model_id,provider,kind,dimension,change_pct,created_at FROM price_events WHERE matched_at IS NULL AND quality='observed' ORDER BY created_at ASC LIMIT ?").bind(limit).all<EventRow>();
  for(const record of records.results)await matchEvent(env,record);
  return records.results.length;
 }
