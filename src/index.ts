@@ -133,7 +133,7 @@ app.get('/api/model',async c=>{
  const [model,job,endpoints]=await Promise.all([
   c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at,model_kind,lifecycle_status FROM models WHERE id=?').bind(id).first(),
   c.env.DB.prepare('SELECT last_checked,last_success,last_error FROM collection_jobs WHERE model_id=?').bind(id).first<{last_checked:number;last_success:number;last_error:string|null}>(),
-  c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,CASE WHEN e.source='provider' AND j.last_success>0 THEN j.last_success ELSE e.checked_at END AS checked_at,e.first_seen FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
+  c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,CASE WHEN e.source='provider' AND j.last_success>0 THEN j.last_success WHEN e.source='model' AND s.last_success>0 THEN s.last_success ELSE e.checked_at END AS checked_at,e.first_seen FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id LEFT JOIN models m ON m.id=e.model_id LEFT JOIN sync_state s ON s.name=CASE WHEN m.model_kind='image' THEN 'images_catalog' ELSE 'catalog' END WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
  ]);
  if(!model)return c.json({error:'Model not found'},404);
  const success=job?.last_success||0;
