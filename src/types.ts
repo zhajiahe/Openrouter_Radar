@@ -13,11 +13,15 @@ export type Bindings = {
 export type AppEnv = { Bindings: Bindings; Variables: { userId: string } };
 export type EventKind = 'price.increased' | 'price.decreased' | 'price.policy_changed'
  | 'endpoint.added' | 'endpoint.removed' | 'endpoint.restored'
+ | 'model.added' | 'model.removed' | 'model.restored'
+ | 'image.price_increased' | 'image.price_decreased' | 'image.price_policy_changed'
  | 'model.context_changed' | 'model.capability_changed' | 'model.alias_changed'
  | 'model.expiration_changed' | 'model.expiring';
 export const EVENT_KINDS: EventKind[] = [
  'price.increased','price.decreased','price.policy_changed',
  'endpoint.added','endpoint.removed','endpoint.restored',
+ 'model.added','model.removed','model.restored',
+ 'image.price_increased','image.price_decreased','image.price_policy_changed',
  'model.context_changed','model.capability_changed','model.alias_changed',
  'model.expiration_changed','model.expiring'
 ];
