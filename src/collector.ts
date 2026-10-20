@@ -136,7 +136,7 @@ async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
   let selected:string[];try{selected=JSON.parse(sub.events_json);}catch{continue;}
   if(!selected.includes(record.kind))continue;
   if((record.kind==='price.increased'||record.kind==='price.decreased'||record.kind==='image.price_increased'||record.kind==='image.price_decreased')&&!thresholdMatches(record.change_pct,sub.threshold_pct))continue;
-  const scheduled=sub.frequency==='daily'?Math.ceil((record.created_at-8*3600)/86400)*86400+8*3600:now()+120; // brief grace lets all dimensions finish matching
+  const scheduled=sub.frequency==='daily'?Math.ceil((record.created_at-8*3600)/86400)*86400+8*3600:Math.max(now(),record.created_at+120); // same snapshot shares the same deadline
   stmts.push(env.DB.prepare("INSERT OR IGNORE INTO notifications (id,user_id,event_id,subscription_id,next_attempt_at,created_at) VALUES(?,?,?,?,?,?)")
    .bind(crypto.randomUUID(),sub.user_id,record.id,sub.id,scheduled,record.created_at));
 
