@@ -52,10 +52,13 @@ jobs:
       - name: Capture baseline screenshots from main
         if: github.event_name == 'pull_request'
         env:
-          PLAYWRIGHT_APP_ROOT: baseline
-          VISUAL_CAPTURE_DIR: artifacts/baseline
+          VISUAL_CAPTURE_DIR: ../artifacts/baseline
           VISUAL_CAPTURE_ONLY: "1"
-        run: npm run test:visual
+        # Run baseline's own spec against baseline's own app. New PR assertions
+        # must not be evaluated against the older main frontend.
+        run: |
+          cd baseline
+          npm run test:visual
 
       - name: Verify current viewport layouts and browser interactions
         env:
