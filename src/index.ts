@@ -6,6 +6,7 @@ import { EVENT_KINDS, now, type AppEnv, type Bindings } from './types';
 import { CATALOG_INTERVAL_SECONDS, PROVIDER_INTERVAL_SECONDS } from './collector';
 import { ALARM_INTERVAL_MS } from './scheduler';
 import { safeCollectionError } from './history';
+import { analyticsWindow, buildDailyAnalytics } from './analytics';
 export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
@@ -41,6 +42,23 @@ app.get('/api/stats',async c=>{
   c.env.DB.prepare("SELECT count(*) n FROM price_events WHERE quality='observed' AND created_at>?").bind(now()-86400).first<{n:number}>()
  ]);
  return c.json({models:models?.n||0,providers:providers?.n||0,subscriptions:subscriptions?.n||0,events24h:events?.n||0});
+});
+app.get('/api/analytics', async c => {
+ const window = analyticsWindow(c.req.query('days'), now());
+ const [eventRows, modelKinds, topProviders] = await Promise.all([
+  c.env.DB.prepare("SELECT date(created_at,'unixepoch') AS day,kind,COUNT(*) AS count FROM price_events WHERE quality='observed' AND created_at>=? AND created_at<=? GROUP BY date(created_at,'unixepoch'),kind ORDER BY day ASC")
+   .bind(window.from,window.to).all<{day:string;kind:string;count:number}>(),
+  c.env.DB.prepare("SELECT model_kind AS kind,COUNT(*) AS count FROM models WHERE lifecycle_status='active' GROUP BY model_kind ORDER BY count DESC")
+   .all<{kind:string;count:number}>(),
+  c.env.DB.prepare("SELECT provider,COUNT(DISTINCT model_id) AS models,COUNT(*) AS endpoints FROM endpoints WHERE source='provider' AND status='active' GROUP BY provider ORDER BY models DESC,endpoints DESC,provider COLLATE NOCASE ASC LIMIT 6")
+   .all<{provider:string;models:number;endpoints:number}>()
+ ]);
+ return c.json({
+  days:window.days,from:window.from,to:window.to,updatedAt:now(),
+  daily:buildDailyAnalytics(eventRows.results||[],window.from,window.days),
+  modelKinds:modelKinds.results||[],
+  topProviders:topProviders.results||[]
+ });
 });
 app.get('/api/models',async c=>{
  const q=(c.req.query('q')||'').trim().slice(0,80);
