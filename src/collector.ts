@@ -2,9 +2,9 @@ import {listModels,listEndpoints,type UpstreamModel,type UpstreamEndpoint} from 
 import {parsePrices,endpointId,findPriceChanges,thresholdMatches,type Prices} from './pricing';
 import {modelState,modelDeltas,expiryWindow,type ModelState} from './phase3';
 import {now,type Bindings,type EventKind} from './types';
-import {historyStatements,prunePriceHistory} from './history';
+import {historyStatements,missingHistoryStatements,prunePriceHistory} from './history';
 
-type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number};
+type Existing={id:string;input_price:string|null;output_price:string|null;pricing_json:string;status:string;missing_count:number;history_seeded:number};
 type ModelRow=ModelState&{id:string;name:string;description:string;pricing_json:string};
 type Observation={modelId:string;provider:string;tag:string;source:'model'|'provider';variant:string;prices:Prices};
 type EventRow={id:string;model_id:string;provider:string;kind:EventKind;dimension:string|null;change_pct:number|null;created_at:number};
@@ -110,11 +110,11 @@ export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<numbe
 }
 export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false):Promise<void>{
  const {modelId,provider,tag,source,variant,prices}=o,id=await endpointId(modelId,provider,tag,variant);
- const previous=await env.DB.prepare('SELECT id,input_price,output_price,pricing_json,status,missing_count FROM endpoints WHERE id=?').bind(id).first<Existing>();
+ const previous=await env.DB.prepare('SELECT id,input_price,output_price,pricing_json,status,missing_count,history_seeded FROM endpoints WHERE id=?').bind(id).first<Existing>();
  const ts=now();
  if(!previous){
   const stmts:D1PreparedStatement[]=[
-   env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+   env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at,history_seeded) VALUES(?,?,?,?,?,?,?,?,?,?,1)")
     .bind(id,modelId,provider,tag,source,prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,ts)
   ];
   stmts.push(...historyStatements(env,id,modelId,provider,source,prices,null,ts));
@@ -124,16 +124,18 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
  const changes=findPriceChanges(storedPrices(previous.pricing_json),prices);
  // A successful sweep is recorded on collection_jobs. Do not rewrite identical
  // endpoint rows every hour, which would exhaust D1 Free daily write limits.
- if(previous.status==='active'&&previous.missing_count===0&&changes.length===0)return;
+ if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1)return;
  const stmts:D1PreparedStatement[]=[
-  env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=? WHERE id=?")
+  env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1 WHERE id=?")
    .bind(prices.prompt,prices.completion,JSON.stringify(prices.raw),ts,id)
  ];
  if(previous.status==='missing')stmts.push(event(env,id,modelId,provider,'endpoint.restored',null,null,null,null,ts));
  for(const delta of changes){
   stmts.push(event(env,id,modelId,provider,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,ts));
  }
- stmts.push(...historyStatements(env,id,modelId,provider,source,prices,storedPrices(previous.pricing_json),ts));
+ stmts.push(...(previous.history_seeded===1
+  ?historyStatements(env,id,modelId,provider,source,prices,storedPrices(previous.pricing_json),ts)
+  :missingHistoryStatements(env,id,modelId,provider,source,prices,ts)));
  await env.DB.batch(stmts);
 }
 export async function collectModel(env:Bindings,modelId:string,fetcher:typeof listEndpoints=listEndpoints):Promise<void>{
