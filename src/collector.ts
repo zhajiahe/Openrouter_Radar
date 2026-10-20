@@ -168,7 +168,7 @@ export async function applySnapshot(env:Bindings,o:Observation,allowAdded=false)
   :findPriceChanges(storedPrices(previous.pricing_json),prices);
  // A successful sweep is recorded on collection_jobs. Do not rewrite identical
  // endpoint rows every hour, which would exhaust D1 Free daily write limits.
- if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null))return;
+ if(previous.status==='active'&&previous.missing_count===0&&changes.length===0&&previous.history_seeded===1&&previous.stable_key===(o.stableKey??null)&&(!o.image||previous.pricing_json===JSON.stringify(raw)))return;
  const stmts:D1PreparedStatement[]=[
   env.DB.prepare("UPDATE endpoints SET input_price=?,output_price=?,pricing_json=?,status='active',missing_count=0,checked_at=?,history_seeded=1,stable_key=? WHERE id=?")
    .bind(prices.prompt,prices.completion,JSON.stringify(raw),ts,o.stableKey??null,id)
@@ -216,7 +216,7 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
    // Legacy database keys can include quantization/tier/name. Reuse their IDs
    // to retain historical events and price points rather than rekeying FKs.
    const candidates=existing.results.filter(r=>r.status!=='superseded'&&
-    (r.stable_key===key||(!r.stable_key&&r.provider===provider&&r.tag===tag)));
+    (r.stable_key===key||(r.provider===provider&&r.tag===tag)));
    const chosen=candidates.find(r=>r.status==='active')??candidates[0];
    const id=chosen?.id??await endpointId(modelId,provider,tag);
    if(assigned.has(key)||seen.has(id))continue;
