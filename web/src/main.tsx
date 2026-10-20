@@ -374,7 +374,24 @@ function App(){
     </>}
     {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>我的订阅</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><button className="primary" onClick={()=>setView('catalog')}>+ 新建订阅</button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
-      {watches.length?<div className="watch-grid">{watches.map(w=><div className="watch-card" key={w.id}><div><span className="light-tag">{w.provider||'所有 Provider'}</span><h3>{w.name}</h3><code>{w.model_id}</code><p>{JSON.parse(w.events_json).map(label).join(' · ')}</p><small>阈值 {w.threshold_pct}% · {w.frequency==='daily'?'每日摘要':'即时通知'}</small></div><button className="delete" onClick={()=>void removeWatch(w.id)}>取消订阅</button></div>)}</div>:<div className="empty roomy">还没有任何订阅。进入模型目录，选择你想关注的模型。</div>}</div>}
+      {watches.length?<div className="watch-grid">{watches.map(w=><div className={'watch-card '+(w.paused?'is-paused':'')} key={w.id}><div>
+       <div className="watch-topline"><span className="light-tag">{w.provider||'所有 Provider'}</span><span className={w.paused?'tag':'light-tag'}>{w.paused?'已暂停':'监控中'}</span></div>
+       <h3>{w.name}</h3><code>{w.model_id}</code><p>{JSON.parse(w.events_json).map(label).join(' · ')}</p>
+       <small>阈值 {w.threshold_pct}% · {w.frequency==='daily'?'每日摘要（UTC 08:00）':'尽快通知'}</small>
+       <div className="watch-delivery"><span>最近命中：{w.last_hit?time(w.last_hit):'尚无'}</span><span>最近邮件：{w.last_sent?time(w.last_sent):'尚无'}</span>
+        <span>发送状态：{w.latest_status||'无通知'}{w.frequency==='daily'&&!w.paused?' · 下一摘要窗口 UTC 08:00':''}</span></div>
+       {editingWatch===w.id&&<div className="watch-editor">
+        <label>Provider <input value={watchDraft.provider} placeholder="留空表示所有 Provider" onChange={e=>setWatchDraft(v=>({...v,provider:e.target.value}))}/></label>
+        <label>最小变化百分比 <input type="number" min="0" max="1000" value={watchDraft.threshold_pct} onChange={e=>setWatchDraft(v=>({...v,threshold_pct:Number(e.target.value)}))}/></label>
+        <label>通知节奏 <select value={watchDraft.frequency} onChange={e=>setWatchDraft(v=>({...v,frequency:e.target.value}))}><option value="instant">尽快通知</option><option value="daily">每日汇总（UTC）</option></select></label>
+        <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><label key={kind}><input type="checkbox" checked={watchDraft.events.includes(kind)} onChange={e=>setWatchDraft(v=>({...v,events:e.target.checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}))}/>{name}</label>)}</div></details>
+        <div className="watch-actions"><button className="primary" disabled={busy} onClick={()=>void saveWatch(w.id)}>保存</button><button onClick={()=>setEditingWatch(null)}>取消</button></div>
+       </div>}
+      </div><div className="watch-actions">
+       <button onClick={()=>editingWatch===w.id?setEditingWatch(null):startEditWatch(w)}>{editingWatch===w.id?'收起编辑':'编辑规则'}</button>
+       <button onClick={()=>void togglePaused(w)}>{w.paused?'恢复提醒':'暂停提醒'}</button>
+       <button className="delete" onClick={()=>void removeWatch(w.id)}>删除</button>
+      </div></div>)}</div>:<div className="empty roomy">还没有任何订阅。进入模型目录，选择你想关注的模型。</div>}</div>}
     </>}
     {view==='notices'&&<><div className="page-heading"><div><div className="eyebrow">YOUR ALERTS</div><h1>通知中心</h1><p>站内记录每次命中订阅规则的事件，邮件发送状态同步展示。</p></div></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">{notices.length?notices.map(n=><div className={'notice '+(!n.read_at?'unread':'')} key={n.id}>
