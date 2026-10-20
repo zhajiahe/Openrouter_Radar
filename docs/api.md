@@ -83,4 +83,7 @@ The Durable Object alarm wakes each minute. The full model catalogue refreshes o
 - GET /api/events additionally accepts provider, start, end (Unix seconds). GET /api/events/export with the same filters supports CSV or JSON with a maximum 1,000 rows per request. RSS supports page=.
 - PATCH /api/subscriptions/:id edits provider, events, threshold_pct, frequency and paused (boolean). Pausing suppresses queued alerts and new event matching.
 - GET /api/subscriptions includes paused, last_hit, last_sent and latest_status. GET /api/notifications includes retry counts and safe delivery error labels.
-- Channel-specific REST endpoints and operator configuration are documented in [notification-channels.md](notification-channels.md).
+- No Telegram or Webhook APIs. Delivery is email + in-app; RSS remains public.
+- New quality classification: public GET /api/events, /api/events/export, /feed.xml, and 24-hour stats default to quality='observed'. GET /api/events?include_baseline=1 and export?include_baseline=1 retain audit access to legacy baseline_noise entries. CSV/JSON exports include quality.
+- Discount changes and previously unrecognized numeric pricing fields are policy changes, not price.increased / price.decreased.
+- Legacy records with placeholder '{}' capabilities and companion initial alias / expiration metadata are retained as baseline_noise instead of promoted to market events.
