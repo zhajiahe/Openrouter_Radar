@@ -5,6 +5,8 @@ export type Bindings = {
  APP_ORIGIN: string;
  MAIL_FROM: string;
  RESEND_API_KEY?: string;
+ TELEGRAM_BOT_TOKEN?: string;
+ WEBHOOK_ALLOWED_HOSTS?: string;
  /** Server-side owner secret, never accepted from web clients. */
  OPENROUTER_API_KEY?: string;
  OPEN_SIGNUP?: string;
