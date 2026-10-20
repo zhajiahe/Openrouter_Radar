@@ -161,7 +161,10 @@ app.get('/feed.xml',async c=>{
  return c.body(xml,200,{'Content-Type':'application/rss+xml; charset=utf-8'});
 });
 app.get('/api/subscriptions',requireAuth,async c=>{
- const rows=await c.env.DB.prepare(`SELECT s.id,s.model_id,m.name,s.provider,s.events_json,s.threshold_pct,s.frequency,s.created_at
+ const rows=await c.env.DB.prepare(`SELECT s.id,s.model_id,m.name,s.provider,s.events_json,s.threshold_pct,s.frequency,s.paused,s.created_at,
+ (SELECT MAX(n.created_at) FROM notifications n WHERE n.subscription_id=s.id) AS last_hit,
+ (SELECT MAX(n.sent_at) FROM notifications n WHERE n.subscription_id=s.id) AS last_sent,
+ (SELECT n.status FROM notifications n WHERE n.subscription_id=s.id ORDER BY n.created_at DESC LIMIT 1) AS latest_status
  FROM subscriptions s JOIN models m ON m.id=s.model_id WHERE s.user_id=? ORDER BY s.created_at DESC`)
  .bind(c.get('userId')).all();
  return c.json({data:rows.results});
@@ -184,6 +187,27 @@ app.post('/api/subscriptions',requireAuth,async c=>{
  await c.env.DB.prepare(`INSERT INTO subscriptions(id,user_id,model_id,provider,events_json,threshold_pct,frequency,created_at)
    VALUES(?,?,?,?,?,?,?,?)`).bind(id,c.get('userId'),parsed.data.model_id,parsed.data.provider||null,JSON.stringify(parsed.data.events),parsed.data.threshold_pct,parsed.data.frequency,now()).run();
  return c.json({id},201);
+});
+app.patch('/api/subscriptions/:id',requireAuth,async c=>{
+ const parsed=subSchema.omit({model_id:true}).partial().extend({paused:z.boolean().optional()})
+  .safeParse(await c.req.json().catch(()=>null));
+ if(!parsed.success)return c.json({error:'Invalid update',details:parsed.error.flatten().fieldErrors},400);
+ const userId=c.get('userId'),id=c.req.param('id');
+ const old=await c.env.DB.prepare('SELECT id,provider,events_json,threshold_pct,frequency,paused FROM subscriptions WHERE id=? AND user_id=?')
+  .bind(id,userId).first<{provider:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number}>();
+ if(!old)return c.json({error:'Subscription not found'},404);
+ const d=parsed.data;
+ const provider=d.provider===undefined?old.provider:d.provider||null;
+ const events=d.events===undefined?old.events_json:JSON.stringify(d.events);
+ const threshold=d.threshold_pct??old.threshold_pct,frequency=d.frequency??old.frequency;
+ const paused=d.paused===undefined?old.paused:(d.paused?1:0);
+ await c.env.DB.prepare('UPDATE subscriptions SET provider=?,events_json=?,threshold_pct=?,frequency=?,paused=? WHERE id=? AND user_id=?')
+  .bind(provider,events,threshold,frequency,paused,id,userId).run();
+ if(paused){
+  await c.env.DB.prepare("UPDATE notifications SET status='suppressed' WHERE subscription_id=? AND user_id=? AND status IN ('pending','sending')")
+   .bind(id,userId).run();
+ }
+ return c.json({updated:true,paused:!!paused});
 });
 app.delete('/api/subscriptions/:id',requireAuth,async c=>{
  const removed=await c.env.DB.prepare('DELETE FROM subscriptions WHERE id=? AND user_id=?').bind(c.req.param('id'),c.get('userId')).run();
