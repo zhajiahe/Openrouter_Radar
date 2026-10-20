@@ -14,6 +14,11 @@ export type Bindings = {
  OPENROUTER_API_KEY?: string;
  OPEN_SIGNUP?: string;
  MAX_MODELS_PER_TICK?: string;
+ /** One-time opt-in reset, scoped to a specific production origin. */
+ FRESH_START_ID?: string;
+ FRESH_START_INSTANCE?: string;
+ FRESH_START_PURGE_AT?: string;
+ FRESH_START_START_AT?: string;
 };
 export type AppEnv = { Bindings: Bindings; Variables: { userId: string } };
 export type EventKind = 'price.increased' | 'price.decreased' | 'price.policy_changed'
