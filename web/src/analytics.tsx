@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from 'react';
+import React,{useEffect,useState} from 'react';
 import './analytics.css';
 
 type DailyPoint={date:string;total:number;priceUp:number;priceDown:number;lifecycle:number;other:number};
