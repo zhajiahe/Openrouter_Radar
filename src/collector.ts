@@ -213,7 +213,9 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
    const provider=item.provider_name;
    const rawTag='provider_tag' in item?item.provider_tag:undefined;
    const rawFallback='tag' in item?item.tag:undefined;
-   const tag=typeof rawTag==='string'&&rawTag?rawTag:typeof rawFallback==='string'?rawFallback:'';
+   const tag=isImage
+    ?(typeof rawTag==='string'?rawTag:'')
+    :(typeof rawFallback==='string'&&rawFallback?rawFallback:typeof rawTag==='string'?rawTag:'');
    const rawSlug='provider_slug' in item?item.provider_slug:undefined;
    const slug=typeof rawSlug==='string'&&rawSlug?rawSlug:provider;
    const key=stableEndpointKey(slug,tag);
