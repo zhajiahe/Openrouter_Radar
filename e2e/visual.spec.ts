@@ -67,7 +67,7 @@ for(const width of widths){
    await expect(page.locator('.provider-stability-table')).toContainText('历史不足');
    await expect(page.getByRole('columnheader',{name:'Cache Read'})).toBeVisible();
    await expect(page.locator('.radar-provider-table')).toContainText('$0.15');
-   await expect(page.locator('.historic-card')).toContainText('实际观测点');
+   await expect(page.locator('.historic-card:not(.provider-stability)')).toContainText('实际观测点');
    await checkDocument(page,width);
    await capture(page,`${width}/model-detail.png`);
    // Explicitly confirm only table's own container scrolls on narrow screens.
@@ -118,7 +118,7 @@ for(const width of [390,1440]){
    await page.locator('.model-main').filter({hasText:'Studio Image Generator'}).click();
    await expect(page.locator('.detail-panel')).toContainText(IMAGE_ID);
    await expect(page.locator('.detail-quick-price')).toContainText('按计费项');
-   await expect(page.locator('.historic-card')).toContainText('图片计费');
+   await expect(page.locator('.historic-card:not(.provider-stability)')).toContainText('图片计费');
    await capture(page,`${width}/image-model.png`);
    await checkDocument(page,width);
   });
