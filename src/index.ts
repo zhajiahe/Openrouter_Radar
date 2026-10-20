@@ -208,6 +208,8 @@ app.patch('/api/subscriptions/:id',requireAuth,async c=>{
  if(paused){
   await c.env.DB.prepare("UPDATE notifications SET status='suppressed' WHERE subscription_id=? AND user_id=? AND status IN ('pending','sending')")
    .bind(id,userId).run();
+  await c.env.DB.prepare("UPDATE channel_deliveries SET status='suppressed' WHERE notification_id IN (SELECT id FROM notifications WHERE subscription_id=? AND user_id=?) AND status IN ('pending','sending')")
+   .bind(id,userId).run();
  }
  return c.json({updated:true,paused:!!paused});
 });
