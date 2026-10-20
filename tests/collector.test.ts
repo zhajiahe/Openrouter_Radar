@@ -41,12 +41,16 @@ test('unmatched events are replayed, filtered, queued and watermarked atomically
  ]);
  assert.equal(await matchUnmatchedEvents(env),1);
  assert.equal(executed.length,1);
- assert.equal(executed[0].length,2);
+ assert.equal(executed[0].length,4);
  assert.match(executed[0][0].sql,/INSERT OR IGNORE INTO notifications/);
  assert.equal(executed[0][0].args[1],'eligible');
  assert.equal(executed[0][0].args[2],'evt1');
- assert.match(executed[0][1].sql,/matched_at/);
- assert.equal(executed[0][1].args[1],'evt1');
+ assert.match(executed[0][1].sql,/channel_deliveries/);
+ assert.match(executed[0][1].sql,/telegram/);
+ assert.match(executed[0][2].sql,/channel_deliveries/);
+ assert.match(executed[0][2].sql,/webhook/);
+ assert.match(executed[0][3].sql,/matched_at/);
+ assert.equal(executed[0][3].args[1],'evt1');
 });
 test('unmatched events with no subscribers still advance the replay watermark',async()=>{
  const {env,executed}=stubDb([event],[]);

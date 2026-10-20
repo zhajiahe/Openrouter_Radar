@@ -6,6 +6,7 @@ import './monitoring.css';
 import './preferences.css';
 import {translate} from './i18n';
 import {PriceHistory,CompareModels} from './monitoring';
+import {ChannelSettings} from './channel-settings';
 
 type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number};
 type ProviderOption={provider:string;model_count:number};
@@ -408,7 +409,7 @@ function App(){
      </div>):<div className="empty roomy">暂时没有通知，模型价格有变化时这里会出现记录。</div>}</div>}
     </>}
     {view==='account'&&<><div className="page-heading"><div><div className="eyebrow">YOUR ACCOUNT</div><h1>{t('账号与登录')}</h1><p>订阅者只需邮箱和密码，无需填写任何模型 API Key。</p></div></div>
-     {user?<div className="panel auth-panel"><div className="avatar">◎</div><h2>{user.email}</h2><p>已登录 · 可以创建价格监控和接收通知</p><button className="outline-button" onClick={()=>void logout()}>{t('退出登录')}</button></div>:
+     {user?<><div className="panel auth-panel"><div className="avatar">◎</div><h2>{user.email}</h2><p>已登录 · 可以创建价格监控和接收通知</p><button className="outline-button" onClick={()=>void logout()}>{t('退出登录')}</button></div><ChannelSettings/></>:
      <div className="panel auth-panel"><h2>{authMode==='register'?'创建免费账号':authMode==='reset'?'设置新密码':authMode==='forgot'?'找回密码':'欢迎回来'}</h2>
      <p>价格数据公开。注册后可订阅变动提醒。</p>
      <form onSubmit={e=>void submitAuth(e)}>

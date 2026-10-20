@@ -95,6 +95,10 @@ async function matchEvent(env:Bindings,record:EventRow):Promise<void>{
   const scheduled=sub.frequency==='daily'?Math.ceil((record.created_at-8*3600)/86400)*86400+8*3600:now();
   stmts.push(env.DB.prepare("INSERT OR IGNORE INTO notifications (id,user_id,event_id,subscription_id,next_attempt_at,created_at) VALUES(?,?,?,?,?,?)")
    .bind(crypto.randomUUID(),sub.user_id,record.id,sub.id,scheduled,record.created_at));
+  stmts.push(env.DB.prepare("INSERT OR IGNORE INTO channel_deliveries(notification_id,channel,next_attempt_at) SELECT n.id,'telegram',? FROM notifications n JOIN delivery_channels d ON d.user_id=n.user_id WHERE n.user_id=? AND n.event_id=? AND n.subscription_id=? AND d.telegram_confirmed_at IS NOT NULL")
+   .bind(scheduled,sub.user_id,record.id,sub.id));
+  stmts.push(env.DB.prepare("INSERT OR IGNORE INTO channel_deliveries(notification_id,channel,next_attempt_at) SELECT n.id,'webhook',? FROM notifications n JOIN delivery_channels d ON d.user_id=n.user_id WHERE n.user_id=? AND n.event_id=? AND n.subscription_id=? AND d.webhook_enabled=1 AND d.webhook_url IS NOT NULL")
+   .bind(scheduled,sub.user_id,record.id,sub.id));
  }
  stmts.push(env.DB.prepare('UPDATE price_events SET matched_at=? WHERE id=? AND matched_at IS NULL').bind(now(),record.id));
  await env.DB.batch(stmts);

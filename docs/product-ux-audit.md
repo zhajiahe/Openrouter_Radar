@@ -76,3 +76,9 @@
 ## 当前 PR 的范围
 
 本次实现视觉布局、目录服务端过滤/排序/分页、变更流过滤/分页、模型级最近变更和分享链接、11 种事件的渐进展开、首页 KPI 优先级修正。**P0 数据基础建设与 P1/P2 未列入当前 PR 的功能不能当成已完成。**
+
+## Implementation follow-up (2026-10)
+
+The core P0/P1 items are implemented in the monitoring-completeness PR: observed-only sparse history, freshness and error flags, optional pricing metadata inspection, Provider comparison, filtered exports, editable/pausable watches, notification idempotency and retry leases.
+
+P2 browser-local dark mode and a **partial bilingual UI glossary** are implemented. Telegram and signed Webhooks require operator opt-in; no destination is enabled by default. Comprehensive translation coverage, UI visual regression screenshots, and real-world delivery tests with live provider credentials remain operational validation items, not guaranteed by unit tests alone.
