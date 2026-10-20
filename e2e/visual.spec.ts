@@ -39,6 +39,17 @@ for(const width of widths){
    page.on('pageerror',e=>errors.push(e.message));
    await goto(page);
    await expect(page.getByRole('heading',{name:'市场动态'})).toBeVisible();
+   if(!baseline){
+    const footer=page.getByRole('contentinfo',{name:'网站页脚'});
+    await expect(footer).toContainText('Model prices, under your radar.');
+    await expect(footer).toContainText('模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。');
+    await expect(page.locator('.hero, .overview-intro')).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'探索模型目录'})).toHaveCount(0);
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href','/favicon.svg');
+    const favicon=await page.request.get('/favicon.svg');
+    expect(favicon.ok()).toBeTruthy();
+    expect(await favicon.text()).toContain('<svg');
+   }
    await expect(page.locator('.analytics-grid .chart-panel')).toHaveCount(3);
    await expect(page.locator('.recharts-responsive-container').first()).toBeVisible();
    await checkDocument(page,width);
@@ -56,6 +67,7 @@ for(const width of widths){
    await goto(page);
    await page.getByRole('navigation',{name:'主要导航'}).getByRole('button',{name:'Models'}).click();
    await expect(page.locator('.model-main')).toHaveCount(3);
+   if(!baseline)await expect(page.getByRole('contentinfo',{name:'网站页脚'})).toBeVisible();
    await checkDocument(page,width);
    await capture(page,`${width}/catalog.png`);
    await page.locator('.model-main').filter({hasText:'GPT 5.6'}).click();

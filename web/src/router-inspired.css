@@ -77,23 +77,7 @@
 }
 .account-button:hover{background:#f3f1f8;border-color:#c9c3dd}
 .content{max-width:1570px;margin:0 auto;padding:35px clamp(18px,3.4vw,62px) 82px}
-.hero{
-  display:block;min-height:0;background:none;border:0;box-shadow:none;
-  border-radius:0;color:var(--radar-text);padding:17px 0 32px;
-  margin:0 0 8px
-}
-.hero::after{display:none}
-.hero .eyebrow{color:var(--radar-text-tertiary);font-size:10px;font-weight:700}
-.hero .eyebrow::before{background:#8871d3;width:6px;height:6px}
-.hero h1{
-  font-size:clamp(37px,4.7vw,66px);font-weight:690;line-height:1.08;
-  letter-spacing:-2.4px;max-width:980px;margin:23px 0 19px
-}
-.hero .accent{color:#6b50c9}
-.hero p{color:#68666f;max-width:640px;font-size:14px;line-height:1.78;margin-bottom:24px}
-.hero .primary{background:#26242d;color:#fff;border-color:#26242d;border-radius:8px;font-size:12px;min-height:42px}
-.hero .primary:hover{background:#48404f;transform:translateY(-1px)}
-.hero-secondary{color:var(--radar-text-tertiary);font-size:11px}
+.primary{background:#26242d;color:#fff;border-color:#26242d;border-radius:8px;font-size:12px;min-height:42px}
 .primary{
   background:#282630;border:1px solid #282630;color:#fff;border-radius:8px;
   box-shadow:none;font-size:12px;min-height:39px;padding:10px 16px
@@ -286,9 +270,6 @@ input[type="checkbox"]{accent-color:#7052b9}
   .topbar-actions{gap:8px}
   .live-indicator{display:none}
   .content{padding:21px 15px 60px}
-  .hero{padding:12px 0 26px;border-radius:0;margin-bottom:0}
-  .hero h1{font-size:clamp(34px,8vw,48px);letter-spacing:-1.6px}
-  .hero p{font-size:12px}
   .metrics{gap:0;margin-bottom:30px}
   .metric{padding:14px 9px 16px!important;min-height:116px;border:0!important}
   .metric:nth-child(odd){border-right:1px solid var(--radar-border)!important}
@@ -323,6 +304,33 @@ input[type="checkbox"]{accent-color:#7052b9}
   .checks{grid-template-columns:1fr 1fr}
 }
 @media(prefers-reduced-motion:reduce){
-  .primary:hover,.hero .primary:hover{transform:none}
+  .primary:hover{transform:none}
   .nav-link, .model-item, .primary{transition:none!important}
+}
+
+/* The opening view focuses on live data. Brand copy belongs to the global footer. */
+.main{display:flex;flex-direction:column}
+.content{width:100%;flex:1}
+.site-footer{
+ width:100%;max-width:1570px;margin:0 auto;
+ padding:0 clamp(18px,3.4vw,62px) 30px;color:var(--radar-text)
+}
+.site-footer-inner{
+ border-top:1px solid var(--radar-border);padding:24px 0 0;
+ display:flex;justify-content:space-between;align-items:flex-start;gap:20px 40px
+}
+.site-footer-copy{min-width:0}
+.site-footer h2{font-size:clamp(17px,1.9vw,23px);font-weight:680;letter-spacing:-.65px;line-height:1.3;margin:0 0 9px}
+.site-footer h2 span{color:var(--radar-accent)}
+.site-footer p{font-size:12px;line-height:1.8;color:var(--radar-text-muted);max-width:680px;margin:0}
+.site-footer a{
+ display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+ flex:none;font-size:12px;font-weight:650;color:var(--radar-accent);padding-top:6px
+}
+.site-footer a:hover{text-decoration:underline}
+@media(max-width:720px){
+ .site-footer{padding:0 15px 24px}
+ .site-footer-inner{flex-direction:column;gap:12px;padding-top:19px}
+ .site-footer h2{font-size:19px}
+ .site-footer p{font-size:11px}
 }
