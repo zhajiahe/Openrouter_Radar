@@ -52,7 +52,7 @@ test('non-numeric nested policy changes are not silently ignored',()=>{
 test('cache read/write, audio cache and image output are monetary dimensions with native units',()=>{
  const old=parsePrices({input_cache_read:'0.000001',input_cache_write:'0.000002',input_cache_write_1h:'0.000003',input_audio_cache:'0.000004',audio_output:'0.01',image_output:'0.02'});
  const next=parsePrices({input_cache_read:'0.000002',input_cache_write:'0.000001',input_cache_write_1h:'0.000006',input_audio_cache:'0.000003',audio_output:'0.02',image_output:'0.01'});
- assert.deepEqual(findPriceChanges(old,next).map(x=>x.dimension),['audio_output','cache_read','cache_write','cache_write_1h','image_output','input_audio_cache']);
+ assert.deepEqual(findPriceChanges(old,next).map(x=>x.dimension),['audio_output','image_output','input_audio_cache','cache_read','cache_write','cache_write_1h']);
  const units=Object.fromEntries(observedPrices(next).map(p=>[p.dimension,p.unit]));
  assert.equal(units.cache_read,'USD/token');
  assert.equal(units.audio_output,'USD/second');

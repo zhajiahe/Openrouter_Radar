@@ -6,13 +6,13 @@ import { imageChargeDimension } from './image-pricing';
 
 /** Sparse, observed-only baselines and price changes, with explicit billing units. */
 export function historyStatements(env:Bindings,endpointId:string,modelId:string,provider:string,source:'model'|'provider',current:Prices,previous:Prices|null,ts=now()):D1PreparedStatement[]{
- const old=new Map(previous?observedPrices(previous).map(p=>[p.dimension,p.price]):[]);
+ const old=new Map(previous?observedPrices(previous).map(p=>[p.dimension,p.price] as const):[]);
  return observedPrices(current).filter(p=>!old.has(p.dimension)||old.get(p.dimension)!==p.price).map(p=>
   env.DB.prepare('INSERT OR IGNORE INTO price_observations(endpoint_id,model_id,provider,source,dimension,unit,price,observed_at) VALUES(?,?,?,?,?,?,?,?)')
    .bind(endpointId,modelId,provider,source,p.dimension,p.unit,p.price,ts));
 }
 export function imageHistoryStatements(env:Bindings,endpointId:string,modelId:string,provider:string,current:ImageCharge[],previous:ImageCharge[]|null,ts=now()):D1PreparedStatement[]{
- const old=new Map((previous||[]).map(charge=>[imageChargeDimension(charge),charge.cost_usd]));
+ const old=new Map((previous||[]).map(charge=>[imageChargeDimension(charge),charge.cost_usd] as const));
  return current.filter(charge=>old.get(imageChargeDimension(charge))!==charge.cost_usd).map(charge=>
   env.DB.prepare('INSERT OR IGNORE INTO price_observations(endpoint_id,model_id,provider,source,dimension,unit,price,observed_at) VALUES(?,?,?,?,?,?,?,?)')
    .bind(endpointId,modelId,provider,'provider',imageChargeDimension(charge),'USD/'+charge.unit,charge.cost_usd,ts));
