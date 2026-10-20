@@ -63,13 +63,13 @@ app.get('/api/models',async c=>{
  const where=`(?='' OR instr(lower(m.name),lower(?))>0 OR instr(lower(m.id),lower(?))>0)
  AND (?='' OR EXISTS(SELECT 1 FROM endpoints ep WHERE ep.model_id=m.id AND ep.provider=? AND ep.status='active' AND ep.source='provider'))
  AND (?='' OR substr(lower(m.id),1,length(?)+1)=lower(?)||'/')
- AND m.context_length>=?
+ AND COALESCE(m.context_length,0)>=?
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.architecture.input_modalities'),'[]')) j WHERE lower(j.value)=lower(?)))
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.supported_parameters'),'[]')) j WHERE lower(j.value)=lower(?)))
  AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=?))`;
  const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0] as const;
  const [rows,count]=await Promise.all([
-  c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,
+  c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,
    (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL) AS lowest_input,
    (SELECT COUNT(DISTINCT e.provider) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active') AS provider_count
    FROM models m WHERE ${where} ORDER BY ${order[sort]||order.name} LIMIT ? OFFSET ?`)
@@ -87,7 +87,7 @@ app.get('/api/model',async c=>{
  const id=(c.req.query('id')||'').slice(0,200);
  if(!id)return c.json({error:'Missing model id'},400);
  const [model,job,endpoints]=await Promise.all([
-  c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at FROM models WHERE id=?').bind(id).first(),
+  c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at,model_kind,lifecycle_status FROM models WHERE id=?').bind(id).first(),
   c.env.DB.prepare('SELECT last_checked,last_success,last_error FROM collection_jobs WHERE model_id=?').bind(id).first<{last_checked:number;last_success:number;last_error:string|null}>(),
   c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,e.checked_at,e.first_seen FROM endpoints e WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
  ]);

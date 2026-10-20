@@ -6,7 +6,7 @@ import './monitoring.css';
 import './preferences.css';
 import {PriceHistory,CompareModels} from './monitoring';
 
-type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number};
+type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number;model_kind?:string;lifecycle_status?:string};
 type ProviderOption={provider:string;model_count:number};
 type Endpoint={id:string;provider:string;tag:string;source:string;input_price:string|null;output_price:string|null;status:string;checked_at:number;pricing_json:string};
 type Collection={status:string;last_attempt:number|null;last_success:number|null;last_error:string|null;age_seconds:number|null;active_endpoints:number;missing_endpoints:number};
@@ -14,14 +14,18 @@ type Watch={id:string;model_id:string;name:string;provider:string|null;events_js
 type Event={id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number};
 type Notice=Event&{id:string;status:string;read_at:number|null;sent_at:number|null;created_at:number};
 const EVENTS=[
- ['price.decreased','价格下降'],['price.increased','价格上涨'],['endpoint.added','新 Provider'],['endpoint.removed','端点下线'],['endpoint.restored','端点恢复'],['price.policy_changed','定价规则变化'],['model.context_changed','上下文变化'],['model.capability_changed','模型能力变化'],['model.alias_changed','别名目标变化'],['model.expiration_changed','到期日期变化'],['model.expiring','即将到期']
+ ['price.decreased','价格下降'],['price.increased','价格上涨'],['image.price_decreased','图片计费降价'],['image.price_increased','图片计费涨价'],['image.price_policy_changed','图片计费规则变化'],['model.added','模型上架'],['model.removed','模型下架'],['model.restored','模型恢复'],['endpoint.added','新 Provider'],['endpoint.removed','端点下线'],['endpoint.restored','端点恢复'],['price.policy_changed','定价规则变化'],['model.context_changed','上下文变化'],['model.capability_changed','模型能力变化'],['model.alias_changed','别名目标变化'],['model.expiration_changed','到期日期变化'],['model.expiring','即将到期']
 ] as const;
 const label=(kind:string)=>EVENTS.find(e=>e[0]===kind)?.[1]||kind;
 const time=(ts:number)=>new Date(ts*1000).toLocaleString();
 const million=(price:string|null)=>price===null?'—':'$'+(Number(price)*1e6).toLocaleString(undefined,{maximumFractionDigits:5});
 const endpointPrice=(price:string|null)=>million(price);
 const formatEvent=(e:Event):string=>{
- if(e.kind==='model.expiring')return '距离到期最多 '+(e.new_price||'?')+' 天';
+ if(e.kind==='model.expiring')return '上游预计到期：进入 '+(e.new_price||'?')+' 天提醒窗口（不等于下架）';
+ if(e.kind.startsWith('image.price_'))return (e.dimension||'图片计费项目')+'：'+(e.old_price??'未提供')+' → '+(e.new_price??'未提供')+' USD / 指定单位';
+ if(e.kind==='model.added')return '模型首次出现在已建立基准的目录中';
+ if(e.kind==='model.removed')return '连续两次成功目录采集未找到该模型';
+ if(e.kind==='model.restored')return '曾确认下架的模型重新出现';
  if(e.kind==='price.policy_changed'){
   if(e.dimension==='discount')return '折扣规则变化（不能直接视作降价）：'+(e.old_price||'未知')+' → '+(e.new_price||'未知');
   return (e.dimension||'计价规则')+' 已发生变化';
@@ -89,7 +93,7 @@ function App(){
  const [watchProvider,setWatchProvider]=useState('');
  const [threshold,setThreshold]=useState(0);
  const [frequency,setFrequency]=useState('instant');
- const [kinds,setKinds]=useState<string[]>(['price.decreased','price.increased','endpoint.added','endpoint.removed','endpoint.restored']);
+ const [kinds,setKinds]=useState<string[]>(['price.decreased','price.increased','image.price_decreased','image.price_increased','model.added','model.removed','model.restored','endpoint.added','endpoint.removed','endpoint.restored']);
  const [status,setStatus]=useState<{status:string;catalog_last_success:number|null;provider_total?:number;provider_scanned?:number;provider_due?:number;provider_errors?:number}>({status:'degraded',catalog_last_success:null});
 
  async function loadPublic(){
@@ -326,7 +330,7 @@ function App(){
        <div className="model-list" aria-busy={modelLoading}>{models.map(m=><div key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')}>
         <button className="model-main" aria-pressed={selected?.id===m.id} onClick={()=>void inspect(m)}>
          <span className="model-avatar" aria-hidden="true">{m.id.split('/')[0].slice(0,2).toUpperCase()}</span>
-         <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{m.context_length?Math.round(m.context_length/1024)+'K ctx':'Context unknown'} · {m.provider_count||0} providers</span></span>
+         <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{m.context_length?Math.round(m.context_length/1024)+'K ctx':'无上下文限制'} · {m.model_kind==='image'?'图片模型 · ':''}{m.lifecycle_status==='removed'?'已下架 · ':''}{m.provider_count||0} providers</span></span>
          <span className="model-price">{m.lowest_input!==null&&m.lowest_input!==undefined?million(String(m.lowest_input)):'—'}<small>input / M</small></span>
         </button>
         <button className={'compare-add '+(compareIds.includes(m.id)?'selected':'')} onClick={()=>toggleCompare(m.id)} aria-pressed={compareIds.includes(m.id)} aria-label={compareIds.includes(m.id)?'从对比移除 '+m.name:'加入模型对比 '+m.name}>{compareIds.includes(m.id)?'✓':'+'}</button>
@@ -338,7 +342,7 @@ function App(){
       </div>
       <div className="panel detail-panel">{selected?<>
        <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}>{"复制链接"} ↗</button></div>
-       <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code></div></div>
+       <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code>{selected.lifecycle_status==='removed'&&<span className="event-tag">已确认下架 · 等待恢复</span>}{selected.model_kind==='image'&&<span className="event-tag">图片生成模型</span>}</div></div>
        <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{collection?.active_endpoints??0}</strong> Active endpoints</span></div>
        <div className={'collection-summary '+(collection?.status||'never')} role="status">
         <strong>采集状态：{collection?.status==='fresh'?'近期成功':collection?.status==='error'?'采集失败':collection?.status==='stale'?'数据可能过期':'尚未成功采集'}</strong>
@@ -350,10 +354,10 @@ function App(){
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
        <div className="detail-section-head"><h3>Provider pricing</h3><small>USD / 1M tokens · 来自最近一次采集</small></div>
        <div className="scroll-x"><table><thead><tr><th>Provider</th><th>Input</th><th>Output</th><th>检查时间</th></tr></thead><tbody>
-        {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.tag||'Active'}</small></td><td className="num">{endpointPrice(ep.input_price)}</td><td className="num">{endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
+        {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.status==='superseded'?'已合并的旧端点':ep.tag||'Active'}</small></td><td className="num">{ep.pricing_json.includes('image_pricing')?'按图片独立计价':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'详见计费项目':endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
        </tbody></table>{!endpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
-       <PriceHistory modelId={selected.id} providers={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))]}/>
+       {selected.model_kind==='image'?<div className="empty">图片模型采用按张、百万像素或 Token 等不同计费单位。上方查看 Provider 的原始计费项目；下方事件历史记录同单位的真实报价变化，不使用 Token 价格曲线。</div>:<PriceHistory modelId={selected.id} providers={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))]}/>}
        <div className="detail-section-head"><h3>Recent changes</h3><small>仅记录首次快照后的实际变化</small></div>
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
