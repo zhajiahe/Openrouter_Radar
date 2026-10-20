@@ -43,3 +43,11 @@ test('object alias targets from OpenRouter use their routable slug',()=>{
  const same=modelState({id:'alias/entry',name:'Entry',alias_target:{name:'Renamed',slug:'vendor/actual'}} as any,state);
  assert.deepEqual(modelDeltas(state,same),[]);
 });
+
+test('migrated unknown model metadata is baseline enrichment, not capability alerts',()=>{
+ const old={context_length:null,expiration_date:null,alias_target:null,capabilities_json:'{}'};
+ const next={context_length:32768,expiration_date:1794000000,alias_target:'publisher/model',capabilities_json:'{"architecture":{"modality":"text->text"}}'};
+ assert.deepEqual(modelDeltas(old,next),[]);
+ const changed={...next,context_length:65536};
+ assert.deepEqual(modelDeltas(next,changed).map(e=>e.kind),['model.context_changed']);
+});
