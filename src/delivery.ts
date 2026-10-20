@@ -12,7 +12,7 @@ export function notificationText(rows:Pending[],origin:string):string{
   ...rows.map(r=>{
    const isPrice=['price.increased','price.decreased','image.price_increased','image.price_decreased'].includes(r.kind);
    const detail=isPrice&&r.old_price!==null&&r.new_price!==null
-    ? ' · '+priceDimensionLabel(r.dimension)+': '+r.old_price+' → '+r.new_price+'（请以对应计费维度的原始单位核对报价）'
+    ? ' · '+priceDimensionLabel(r.dimension)+'（'+(r.dimension||'unknown')+'）: '+r.old_price+' → '+r.new_price+'（请以对应计费维度的原始单位核对报价）'
     :r.kind==='model.expiring'?' · 上游标注预计在 '+(r.new_price||'?')+' 天窗口内到期'
     :r.dimension?' · '+r.dimension+': '+(r.old_price||'未知').slice(0,100)+' → '+(r.new_price||'未知').slice(0,100):'';
    return '• '+r.model_id+' / '+r.provider+' — '+eventTitle(r.kind,r.dimension)+detail;
