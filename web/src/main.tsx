@@ -313,22 +313,19 @@ function App(){
     {view==='catalog'&&<>
      <div className="page-heading"><div><div className="eyebrow">EXPLORE MODELS</div><h1>Models <span className="model-count">{modelTotal.toLocaleString()}</span></h1><p>{"按模型、Provider、价格探索 OpenRouter 市场。仅显示实际采集的数据。"}</p></div></div>
      <div className="search-row">
-      <div className="search-field"><span aria-hidden="true">⌕</span><input ref={catalogSearch} aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="Search models, e.g. claude, gpt, deepseek..." /><kbd>/</kbd></div>
-      <label className="sort-field"><span>排序</span><select aria-label="模型排序" value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}}><option value="name">名称 A–Z</option><option value="newest">最近更新</option><option value="context">上下文长度</option><option value="price">最低输入价</option></select></label>
+      <div className="search-field"><span aria-hidden="true">⌕</span><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索 claude、gpt、deepseek…" /><kbd>/</kbd></div>
+      <label className="sort-field"><span>排序</span><Select aria-label="模型排序" value={sort} onChange={value=>{setSort(value||"name");setPage(1);}} data={[{value:"name",label:"名称 A–Z"},{value:"newest",label:"最近更新"},{value:"context",label:"上下文长度"},{value:"price",label:"最低输入价"}]}/></label>
      </div>
      <div className="catalog-grid">
       <aside className="panel filter-panel" aria-label="模型筛选">
        <h3>Filters</h3>
        <label htmlFor="provider-filter">Provider</label>
-       <select id="provider-filter" value={providerFilter} onChange={e=>{setProviderFilter(e.target.value);setPage(1);setSelected(null);}}>
-        <option value="">All providers</option>
-        {providers.map(p=><option key={p.provider} value={p.provider}>{p.provider} · {p.model_count}</option>)}
-       </select>
-       <label htmlFor="author-filter">{"模型作者"}</label><input id="author-filter" placeholder="e.g. openai" value={authorFilter} onChange={e=>{setAuthorFilter(e.target.value);setPage(1);}}/>
-       <label htmlFor="modality-filter">{"输入模态"}</label><select id="modality-filter" value={modalityFilter} onChange={e=>{setModalityFilter(e.target.value);setPage(1);}}><option value="">{"全部模态"}</option><option value="text">Text</option><option value="image">Image</option><option value="audio">Audio</option><option value="video">Video</option></select>
-       <label htmlFor="capability-filter">{"能力参数"}</label><select id="capability-filter" value={capabilityFilter} onChange={e=>{setCapabilityFilter(e.target.value);setPage(1);}}><option value="">{"全部能力"}</option><option value="tools">Tools</option><option value="reasoning">Reasoning</option><option value="response_format">JSON / Structured</option></select>
-       <label htmlFor="min-context">{"最小上下文 Tokens"}</label><input id="min-context" type="number" min="0" step="1024" placeholder="不限" value={minContext} onChange={e=>{setMinContext(e.target.value);setPage(1);}}/>
-       <label htmlFor="max-price">{"最高输入价 USD / 1M Tokens"}</label><input id="max-price" type="number" min="0" step=".001" placeholder="不限" value={maxInput} onChange={e=>{setMaxInput(e.target.value);setPage(1);}}/>
+       <Select id="provider-filter" searchable clearable nothingFoundMessage="未找到 Provider" placeholder="所有 Provider" value={providerFilter||null} onChange={v=>{setProviderFilter(v||"");setPage(1);setSelected(null);}} data={providers.map(p=>({value:p.provider,label:p.provider+" · "+p.model_count}))}/>
+       <label htmlFor="author-filter">{"模型作者"}</label><TextInput id="author-filter" placeholder="例如 openai" value={authorFilter} onChange={e=>{setAuthorFilter(e.target.value);setPage(1);}}/>
+       <label htmlFor="modality-filter">{"输入模态"}</label><Select id="modality-filter" clearable placeholder="全部模态" value={modalityFilter||null} onChange={v=>{setModalityFilter(v||"");setPage(1);}} data={["text","image","audio","video"].map(value=>({value,label:value[0].toUpperCase()+value.slice(1)}))}/>
+       <label htmlFor="capability-filter">{"能力参数"}</label><Select id="capability-filter" clearable placeholder="全部能力" value={capabilityFilter||null} onChange={v=>{setCapabilityFilter(v||"");setPage(1);}} data={[{value:"tools",label:"Tools"},{value:"reasoning",label:"Reasoning"},{value:"response_format",label:"JSON / Structured"}]}/>
+       <label htmlFor="min-context">{"最小上下文 Tokens"}</label><NumberInput id="min-context" min={0} step={1024} thousandSeparator="," placeholder="不限" value={minContext} onChange={v=>{setMinContext(String(v));setPage(1);}}/>
+       <label htmlFor="max-price">{"最高输入价 USD / 1M Tokens"}</label><NumberInput id="max-price" min={0} step={0.001} decimalScale={6} placeholder="不限" value={maxInput} onChange={v=>{setMaxInput(String(v));setPage(1);}}/>
        <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}>{"清除筛选"} ↺</button>
        <div className="filter-divider"/>
        <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 ↗</a></div>
@@ -370,10 +367,10 @@ function App(){
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
         <label htmlFor="watch-provider">Provider</label>
-        <select id="watch-provider" value={watchProvider} onChange={e=>setWatchProvider(e.target.value)}><option value="">{"所有 Provider"}</option>{[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=><option key={p} value={p}>{p}</option>)}</select>
-        <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><input id="watch-threshold" type="number" min="0" max="1000" value={threshold} onChange={e=>setThreshold(Number(e.target.value))}/></div>
-         <div><label htmlFor="watch-frequency">通知频率</label><select id="watch-frequency" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="instant">尽快通知</option><option value="daily">每日摘要 (UTC)</option></select></div></div>
-        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><label key={id}><input type="checkbox" checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.target.checked?[...a,id]:a.filter(k=>k!==id))}/>{text}</label>)}</div></details>
+        <Select id="watch-provider" searchable clearable placeholder="所有 Provider" value={watchProvider||null} onChange={v=>setWatchProvider(v||"")} data={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=>({value:p,label:p}))}/>
+        <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><NumberInput id="watch-threshold" min={0} max={1000} decimalScale={2} value={threshold} onChange={v=>setThreshold(Number(v)||0)}/></div>
+         <div><label htmlFor="watch-frequency">通知频率</label><Select id="watch-frequency" value={frequency} onChange={v=>setFrequency(v||"instant")} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日摘要 (UTC)"}]}/></div></div>
+        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.currentTarget.checked?[...a,id]:a.filter(k=>k!==id))}/>)}</div></details>
         <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</Button>
        </div>
       </>:<div className="selection-empty"><span>▧</span><h3>{"选择一个模型"}</h3><p>{"对比 Provider 报价、查看真实变化、创建监控。"}</p><small>点击左侧模型查看详情</small></div>}</div>
@@ -382,9 +379,9 @@ function App(){
     </>}
     {view==='events'&&<>
      <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml">RSS ↗</a></div>
-     <div className="events-filters"><div className="search-field"><span aria-hidden="true">⌕</span><input aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
-      <select aria-label="事件类型" value={eventKind} onChange={e=>{setEventKind(e.target.value);setEventPage(1);}}><option value="">全部事件</option>{EVENTS.map(([id,text])=><option key={id} value={id}>{text}</option>)}</select>
-      <select aria-label="Provider 筛选" value={eventProvider} onChange={e=>{setEventProvider(e.target.value);setEventPage(1);}}><option value="">所有 Provider</option>{providers.map(p=><option key={p.provider} value={p.provider}>{p.provider}</option>)}</select>
+     <div className="events-filters"><div className="search-field"><span aria-hidden="true">⌕</span><TextInput className="radar-search" aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
+      <Select aria-label="事件类型" searchable clearable placeholder="全部事件" value={eventKind||null} onChange={v=>{setEventKind(v||"");setEventPage(1);}} data={EVENTS.map(([value,label])=>({value,label}))}/>
+      <Select aria-label="Provider 筛选" searchable clearable placeholder="所有 Provider" value={eventProvider||null} onChange={v=>{setEventProvider(v||"");setEventPage(1);}} data={providers.map(p=>({value:p.provider,label:p.provider}))}/>
      </div>
      <div className="event-export-bar"><label>从 <input aria-label="开始日期" type="date" value={eventStart} onChange={e=>{setEventStart(e.target.value);setEventPage(1);}}/></label>
       <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
@@ -401,10 +398,10 @@ function App(){
        <div className="watch-delivery"><span>最近命中：{w.last_hit?time(w.last_hit):'尚无'}</span><span>最近邮件：{w.last_sent?time(w.last_sent):'尚无'}</span>
         <span>发送状态：{w.latest_status||'无通知'}{w.frequency==='daily'&&!w.paused?' · 下一摘要窗口 UTC 08:00':''}</span></div>
        {editingWatch===w.id&&<div className="watch-editor">
-        <label>Provider <input value={watchDraft.provider} placeholder="留空表示所有 Provider" onChange={e=>setWatchDraft(v=>({...v,provider:e.target.value}))}/></label>
-        <label>最小变化百分比 <input type="number" min="0" max="1000" value={watchDraft.threshold_pct} onChange={e=>setWatchDraft(v=>({...v,threshold_pct:Number(e.target.value)}))}/></label>
-        <label>通知节奏 <select value={watchDraft.frequency} onChange={e=>setWatchDraft(v=>({...v,frequency:e.target.value}))}><option value="instant">尽快通知</option><option value="daily">每日汇总（UTC）</option></select></label>
-        <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><label key={kind}><input type="checkbox" checked={watchDraft.events.includes(kind)} onChange={e=>setWatchDraft(v=>({...v,events:e.target.checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}))}/>{name}</label>)}</div></details>
+        <TextInput label="Provider" value={watchDraft.provider} placeholder="留空表示所有 Provider" onChange={e=>setWatchDraft(v=>({...v,provider:e.target.value}))}/>
+        <NumberInput label="最小变化百分比" min={0} max={1000} value={watchDraft.threshold_pct} onChange={value=>setWatchDraft(v=>({...v,threshold_pct:Number(value)||0}))}/>
+        <Select label="通知节奏" value={watchDraft.frequency} onChange={value=>setWatchDraft(v=>({...v,frequency:value||"instant"}))} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日汇总（UTC）"}]}/>
+        <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><Checkbox key={kind} size="xs" label={name} checked={watchDraft.events.includes(kind)} onChange={e=>setWatchDraft(v=>({...v,events:e.currentTarget.checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}))}/>)}</div></details>
         <div className="watch-actions"><Button className="radar-cta" loading={busy} onClick={()=>void saveWatch(w.id)}>保存</Button><button onClick={()=>setEditingWatch(null)}>取消</button></div>
        </div>}
       </div><div className="watch-actions">
@@ -424,8 +421,8 @@ function App(){
      <div className="panel auth-panel"><h2>{authMode==='register'?'创建免费账号':authMode==='reset'?'设置新密码':authMode==='forgot'?'找回密码':'欢迎回来'}</h2>
      <p>价格数据公开。注册后可订阅变动提醒。</p>
      <form onSubmit={e=>void submitAuth(e)}>
-      {authMode!=='reset'&&<><label>电子邮箱</label><input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></>}
-      {authMode!=='forgot'&&<><label>密码（至少 12 个字符）</label><input required minLength={12} type="password" autoComplete={authMode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)}/></>}
+      {authMode!=='reset'&&<><TextInput required label="电子邮箱" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></>}
+      {authMode!=='forgot'&&<><TextInput required label="密码（至少 12 个字符）" minLength={12} type="password" autoComplete={authMode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)}/></>}
       <Button className="radar-cta" fullWidth loading={busy} type="submit">{authMode==='register'?'注册并发送验证邮件':authMode==='forgot'?'发送重置邮件':authMode==='reset'?'重置密码':'登录'}</Button>
      </form><div className="auth-actions">
       <button onClick={()=>{setAuthMode(authMode==='register'?'login':'register');setError('');}}> {authMode==='register'?'已有账号？登录':'没有账号？注册'}</button>
