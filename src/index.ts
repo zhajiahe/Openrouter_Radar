@@ -38,7 +38,7 @@ app.get('/api/stats',async c=>{
   c.env.DB.prepare('SELECT count(*) n FROM models').first<{n:number}>(),
   c.env.DB.prepare("SELECT count(DISTINCT provider) n FROM endpoints WHERE source='provider' AND status='active'").first<{n:number}>(),
   c.env.DB.prepare('SELECT count(*) n FROM subscriptions').first<{n:number}>(),
-  c.env.DB.prepare('SELECT count(*) n FROM price_events WHERE created_at>?').bind(now()-86400).first<{n:number}>()
+  c.env.DB.prepare('SELECT count(*) n FROM price_events WHERE quality='observed' AND created_at>?').bind(now()-86400).first<{n:number}>()
  ]);
  return c.json({models:models?.n||0,providers:providers?.n||0,subscriptions:subscriptions?.n||0,events24h:events?.n||0});
 });
@@ -115,12 +115,13 @@ app.get('/api/events',async c=>{
  const kind=(c.req.query('kind')||'').slice(0,60);
  const q=(c.req.query('q')||'').trim().slice(0,80);
  const provider=(c.req.query('provider')||'').trim().slice(0,150);
+ const includeBaseline=c.req.query('include_baseline')==='1';
  const start=Math.max(0,Number(c.req.query('start'))||0);
  const end=Number(c.req.query('end'))||4102444800;
  const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
  const limit=Math.min(Math.max(Number(c.req.query('limit'))||50,1),100);
- const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND (?='' OR provider=?) AND created_at BETWEEN ? AND ?`;
- const binds=[modelId,modelId,kind,kind,q,q,q,provider,provider,start,end] as const;
+ const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND (?='' OR provider=?) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed')`;
+ const binds=[modelId,modelId,kind,kind,q,q,q,provider,provider,start,end,includeBaseline?1:0] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at
    FROM price_events WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...binds,limit,(page-1)*limit).all(),
@@ -134,9 +135,10 @@ app.get('/api/events/export',async c=>{
  const kind=(c.req.query('kind')||'').slice(0,60);
  const provider=(c.req.query('provider')||'').slice(0,150);
  const q=(c.req.query('q')||'').slice(0,80);
+ const includeBaseline=c.req.query('include_baseline')==='1';
  const start=Math.max(0,Number(c.req.query('start'))||0),end=Number(c.req.query('end'))||4102444800;
- const data=await c.env.DB.prepare("SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at FROM price_events WHERE (?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR provider=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND created_at BETWEEN ? AND ? ORDER BY created_at DESC LIMIT 1000")
-  .bind(modelId,modelId,kind,kind,provider,provider,q,q,q,start,end).all();
+ const data=await c.env.DB.prepare("SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at FROM price_events WHERE (?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR provider=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed') ORDER BY created_at DESC LIMIT 1000")
+  .bind(modelId,modelId,kind,kind,provider,provider,q,q,q,start,end,includeBaseline?1:0).all();
  const headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="radar-events.'+format+'"','X-Export-Limit':'1000'};
  if(format==='json')return c.json({data:data.results,limit:1000,exported_at:now()},200,headers);
  const keys=['id','model_id','provider','kind','dimension','old_price','new_price','change_pct','created_at'];
@@ -152,7 +154,7 @@ app.get('/api/events/export',async c=>{
 app.get('/feed.xml',async c=>{
  const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
  const items=await c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,created_at
- FROM price_events ORDER BY created_at DESC LIMIT 50 OFFSET ?`).bind((page-1)*50).all<{id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;created_at:number}>();
+ FROM price_events WHERE quality='observed' ORDER BY created_at DESC LIMIT 50 OFFSET ?`).bind((page-1)*50).all<{id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;created_at:number}>();
  const escape=(s:string)=>s.replace(/[<>&"']/g,ch=>({'<':'&lt;','>':'&gt;','&':'&quot;',"'":'&apos;','"':'&quot;'}[ch]||ch));
  const origin=c.env.APP_ORIGIN.replace(/\/$/,'');
  const xml='<?xml version="1.0" encoding="UTF-8"?>'+
