@@ -18,16 +18,24 @@ type Model={id:string;name:string;context_length:number|null;updated_at:number;e
 type ProviderOption={provider:string;model_count:number};
 type Endpoint={id:string;provider:string;tag:string;source:string;input_price:string|null;output_price:string|null;status:string;checked_at:number;pricing_json:string};
 type Collection={status:string;last_attempt:number|null;last_success:number|null;last_error:string|null;age_seconds:number|null;active_endpoints:number;missing_endpoints:number};
-type Watch={id:string;model_id:string;name:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number;last_hit:number|null;last_sent:number|null;latest_status:string|null};
+type Watch={id:string;model_id:string;name:string;provider:string|null;price_dimension?:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number;last_hit:number|null;last_sent:number|null;latest_status:string|null};
 type Event={id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number};
 type Notice=Event&{id:string;status:string;read_at:number|null;sent_at:number|null;created_at:number};
 const EVENTS=[
  ['price.decreased','价格下降'],['price.increased','价格上涨'],['image.price_decreased','图片计费降价'],['image.price_increased','图片计费涨价'],['image.price_policy_changed','图片计费规则变化'],['model.added','模型上架'],['model.removed','模型下架'],['model.restored','模型恢复'],['endpoint.added','新 Provider'],['endpoint.removed','端点下线'],['endpoint.restored','端点恢复'],['price.policy_changed','定价规则变化'],['model.context_changed','上下文变化'],['model.capability_changed','模型能力变化'],['model.alias_changed','别名目标变化'],['model.expiration_changed','到期日期变化'],['model.expiring','即将到期']
 ] as const;
+const DIMENSION_OPTIONS=[{value:'input',label:'输入 Token'},{value:'output',label:'输出 Token'},{value:'cache_read',label:'缓存读取'},{value:'cache_write',label:'缓存写入'},{value:'cache_write_1h',label:'缓存写入 1h'},{value:'input_audio_cache',label:'音频缓存'},{value:'internal_reasoning',label:'推理 Token'},{value:'image_token',label:'图片 Token'},{value:'audio_output',label:'音频输出'}];
 const label=(kind:string)=>EVENTS.find(e=>e[0]===kind)?.[1]||kind;
 const time=(ts:number)=>new Date(ts*1000).toLocaleString();
 const million=(price:string|null)=>price===null?'—':'$'+(Number(price)*1e6).toLocaleString(undefined,{maximumFractionDigits:5});
 const endpointPrice=(price:string|null)=>million(price);
+const extraPrice=(ep:Endpoint,field:string)=>{
+ if(ep.pricing_json.includes('image_pricing'))return '—';
+ try{
+  const raw=(JSON.parse(ep.pricing_json) as Record<string,unknown>)[field];
+  return (typeof raw==='string'||typeof raw==='number')&&Number.isFinite(Number(raw))&&Number(raw)>=0?million(String(raw)):'—';
+ }catch{return '—';}
+};
 const formatEvent=(e:Event):string=>{
  if(e.kind==='model.expiring')return '上游预计到期：进入 '+(e.new_price||'?')+' 天提醒窗口（不等于下架）';
  if(e.kind.startsWith('image.price_'))return (e.dimension||'图片计费项目')+'：'+(e.old_price??'未提供')+' → '+(e.new_price??'未提供')+' USD / 指定单位';
@@ -35,6 +43,7 @@ const formatEvent=(e:Event):string=>{
  if(e.kind==='model.removed')return '连续两次成功目录采集未找到该模型';
  if(e.kind==='model.restored')return '曾确认下架的模型重新出现';
  if(e.kind==='price.policy_changed'){
+  if(e.dimension?.startsWith('scheduled_'))return '分时生效价格切换（预定窗口，非临时涨跌）：'+(e.old_price||'未知')+' → '+(e.new_price||'未知');
   if(e.dimension==='discount')return '折扣规则变化（不能直接视作降价）：'+(e.old_price||'未知')+' → '+(e.new_price||'未知');
   return (e.dimension||'计价规则')+' 已发生变化';
  }
@@ -98,7 +107,7 @@ function App(){
  const [loadingEvents,setLoadingEvents]=useState(false);
  const [watches,setWatches]=useState<Watch[]>([]);
  const [editingWatch,setEditingWatch]=useState<string|null>(null);
- const [watchDraft,setWatchDraft]=useState<{provider:string;threshold_pct:number;frequency:string;events:string[]}>({provider:'',threshold_pct:0,frequency:'instant',events:[]});
+ const [watchDraft,setWatchDraft]=useState<{provider:string;threshold_pct:number;frequency:string;price_dimension:string;events:string[]}>({provider:'',threshold_pct:0,frequency:'instant',price_dimension:'',events:[]});
  const [notices,setNotices]=useState<Notice[]>([]);
  const [search,setSearch]=useState('');
  const [debouncedSearch]=useDebouncedValue(search,250);
@@ -108,10 +117,11 @@ function App(){
  const [endpoints,setEndpoints]=useState<Endpoint[]>([]);
  const [collection,setCollection]=useState<Collection|null>(null);
  const [watchProvider,setWatchProvider]=useState('');
+ const [watchDimension,setWatchDimension]=useState('');
  const [threshold,setThreshold]=useState(0);
  const [frequency,setFrequency]=useState('instant');
  const [kinds,setKinds]=useState<string[]>(['price.decreased','price.increased','image.price_decreased','image.price_increased','model.added','model.removed','model.restored','endpoint.added','endpoint.removed','endpoint.restored']);
- const [status,setStatus]=useState<{status:string;catalog_last_success:number|null;provider_total?:number;provider_scanned?:number;provider_due?:number;provider_errors?:number}>({status:'degraded',catalog_last_success:null});
+ const [status,setStatus]=useState<{status:string;catalog_last_success:number|null;provider_total?:number;provider_scanned?:number;provider_due?:number;provider_errors?:number;provider_recent?:number}>({status:'degraded',catalog_last_success:null});
 
  async function loadPublic(){
   const results=await Promise.allSettled([api<typeof stats>('/stats'),api<{data:Event[]}>('/events?limit=40'),fetch('/api/health',{credentials:'same-origin'}).then(r=>r.json() as Promise<typeof status>)]);
@@ -153,7 +163,7 @@ function App(){
   }catch(e){if(requestId===eventRequest.current)setError((e as Error).message);}finally{if(requestId===eventRequest.current)setLoadingEvents(false);}
  }
  async function inspect(model:Model){
-  setSelected(model);setView('catalog');setWatchProvider('');setThreshold(0);setFrequency('instant');
+  setSelected(model);setView('catalog');setWatchProvider('');setWatchDimension('');setThreshold(0);setFrequency('instant');
   if(window.matchMedia('(max-width: 990px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
   setEndpoints([]);setModelEvents([]);setCollection(null);
   history.replaceState(null,'','#model='+encodeURIComponent(model.id));
@@ -213,20 +223,20 @@ function App(){
   if(!selected||!kinds.length){setError('请至少选择一种通知事件');return;}
   setBusy(true);setError('');
   try{
-   await api('/subscriptions',{method:'POST',body:JSON.stringify({model_id:selected.id,provider:watchProvider||null,events:kinds,threshold_pct:Number(threshold),frequency})});
+   await api('/subscriptions',{method:'POST',body:JSON.stringify({model_id:selected.id,provider:watchProvider||null,price_dimension:watchDimension||null,events:kinds,threshold_pct:Number(threshold),frequency})});
    setMessage('订阅创建成功，后续符合条件的变化将通知你。');await loadPrivate();setView('watches');
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}
  }
  function startEditWatch(w:Watch){
   setEditingWatch(w.id);
-  setWatchDraft({provider:w.provider||'',frequency:w.frequency,threshold_pct:w.threshold_pct,events:JSON.parse(w.events_json) as string[]});
+  setWatchDraft({provider:w.provider||'',frequency:w.frequency,threshold_pct:w.threshold_pct,price_dimension:w.price_dimension||'',events:JSON.parse(w.events_json) as string[]});
  }
  async function saveWatch(id:string){
   if(!watchDraft.events.length){setError('至少选择一个提醒事件');return;}
   setBusy(true);
   try{
    await api('/subscriptions/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({
-    provider:watchDraft.provider||null,frequency:watchDraft.frequency,threshold_pct:watchDraft.threshold_pct,events:watchDraft.events
+    provider:watchDraft.provider||null,frequency:watchDraft.frequency,threshold_pct:watchDraft.threshold_pct,price_dimension:watchDraft.price_dimension||null,events:watchDraft.events
    })});
    await loadPrivate();setEditingWatch(null);setMessage('订阅已更新');
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}
@@ -324,6 +334,7 @@ function App(){
        <div className="scanner-meta"><span>{"Provider 快照覆盖"}</span><strong>{progress}%</strong></div>
        <div className="scanner-divider"/>
        <div className="scanner-row"><span>目录同步状态</span><strong className={status.status==='ok'?'good':'warning'}>{status.status==='ok'?'正常':'待确认'}</strong></div>
+       <div className="scanner-row"><span>{"最近一小时成功扫描"}</span><strong>{(status.provider_recent??0).toLocaleString()} 个</strong></div>
        <div className="scanner-row"><span>{"等待扫描"}</span><strong>{(status.provider_due??0).toLocaleString()} 个</strong></div>
        <div className="scanner-row"><span>{"上次目录同步"}</span><strong>{status.catalog_last_success?time(status.catalog_last_success):'暂无'}</strong></div>
        <p className="scanner-footnote">{"每小时全量同步，按批次抓取 Provider。订阅只影响提醒，不影响采集。"}</p>
@@ -386,8 +397,8 @@ function App(){
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
        <div className="detail-section-head"><h3>Provider 报价</h3><small>{selected.model_kind==='image'?'图片计费单位各异，详见原始规则':'USD / 百万 Token · 最新成功采集'}</small></div>
-       <div className="mobile-table-hint">向左滑动查看完整报价与检查时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col">检查时间</th></tr></thead><tbody>
-        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
+       <div className="mobile-table-hint">向左滑动查看完整报价与检查时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col" className="num">Cache Read</th><th scope="col" className="num">Cache Write</th><th scope="col" className="num">Write 1h</th><th scope="col">检查时间</th></tr></thead><tbody>
+        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="num">{extraPrice(ep,'input_cache_read')}</td><td className="num">{extraPrice(ep,'input_cache_write')}</td><td className="num">{extraPrice(ep,'input_cache_write_1h')}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
        </tbody></Table>{!providerEndpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
        <PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>
@@ -396,6 +407,7 @@ function App(){
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
         <label htmlFor="watch-provider">Provider</label>
         <Select id="watch-provider" searchable clearable placeholder="所有 Provider" value={watchProvider||null} onChange={v=>setWatchProvider(v||"")} data={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=>({value:p,label:p}))}/>
+        <Select size="xs" searchable clearable label="价格维度（可选）" placeholder="所有价格维度" value={watchDimension||null} onChange={v=>setWatchDimension(v||'')} data={DIMENSION_OPTIONS}/>
         <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><NumberInput id="watch-threshold" min={0} max={1000} decimalScale={2} value={threshold} onChange={v=>setThreshold(Number(v)||0)}/></div>
          <div><label htmlFor="watch-frequency">通知频率</label><Select id="watch-frequency" value={frequency} onChange={v=>setFrequency(v||"instant")} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日摘要 (UTC)"}]}/></div></div>
         <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 <ChevronDown size={13} aria-hidden="true"/></span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>{const checked=e.currentTarget.checked;setKinds(a=>checked?[...a,id]:a.filter(k=>k!==id));}}/>)}</div></details>
@@ -422,11 +434,12 @@ function App(){
       {watches.length?<div className="watch-grid">{watches.map(w=><div className={'watch-card '+(w.paused?'is-paused':'')} key={w.id}><div>
        <div className="watch-topline"><span className="light-tag">{w.provider||'所有 Provider'}</span><span className={w.paused?'tag':'light-tag'}>{w.paused?'已暂停':'监控中'}</span></div>
        <h3>{w.name}</h3><code>{w.model_id}</code><p>{JSON.parse(w.events_json).map(label).join(' · ')}</p>
-       <small>阈值 {w.threshold_pct}% · {w.frequency==='daily'?'每日摘要（UTC 08:00）':'尽快通知'}</small>
+       <small>{w.price_dimension?'维度 '+w.price_dimension+' · ':''}阈值 {w.threshold_pct}% · {w.frequency==='daily'?'每日摘要（UTC 08:00）':'尽快通知'}</small>
        <div className="watch-delivery"><span>最近命中：{w.last_hit?time(w.last_hit):'尚无'}</span><span>最近邮件：{w.last_sent?time(w.last_sent):'尚无'}</span>
         <span>发送状态：{w.latest_status||'无通知'}{w.frequency==='daily'&&!w.paused?' · 下一摘要窗口 UTC 08:00':''}</span></div>
        {editingWatch===w.id&&<div className="watch-editor">
         <TextInput label="Provider" value={watchDraft.provider} placeholder="留空表示所有 Provider" onChange={e=>setWatchDraft(v=>({...v,provider:e.target.value}))}/>
+        <Select size="xs" searchable clearable label="价格维度（可选）" placeholder="所有价格维度" value={watchDraft.price_dimension||null} data={DIMENSION_OPTIONS} onChange={v=>setWatchDraft(d=>({...d,price_dimension:v||''}))}/>
         <NumberInput label="最小变化百分比" min={0} max={1000} value={watchDraft.threshold_pct} onChange={value=>setWatchDraft(v=>({...v,threshold_pct:Number(value)||0}))}/>
         <Select label="通知节奏" value={watchDraft.frequency} onChange={value=>setWatchDraft(v=>({...v,frequency:value||"instant"}))} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日汇总（UTC）"}]}/>
         <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><Checkbox key={kind} size="xs" label={name} checked={watchDraft.events.includes(kind)} onChange={e=>{const checked=e.currentTarget.checked;setWatchDraft(v=>({...v,events:checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}));}}/>)}</div></details>

@@ -7,6 +7,7 @@ import { CATALOG_INTERVAL_SECONDS, PROVIDER_INTERVAL_SECONDS } from './collector
 import { ALARM_INTERVAL_MS } from './scheduler';
 import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
+import { PRICE_FIELDS } from './pricing';
 export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
@@ -28,11 +29,11 @@ app.get('/api/health',async c=>{
  c.executionCtx.waitUntil(c.env.SCHEDULER.get(c.env.SCHEDULER.idFromName('global')).fetch('https://internal.scheduler/arm').catch(e=>console.error('scheduler bootstrap failed',e)));
  const sync=await c.env.DB.prepare("SELECT last_success,last_error FROM sync_state WHERE name='catalog'").first<{last_success:number;last_error:string|null}>();
  const total=await c.env.DB.prepare('SELECT count(*) as count FROM models').first<{count:number}>();
- const coverage=await c.env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN last_checked>0 THEN 1 ELSE 0 END) AS scanned, SUM(CASE WHEN last_checked<? THEN 1 ELSE 0 END) AS due, SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS errors FROM collection_jobs')
-  .bind(now()-PROVIDER_INTERVAL_SECONDS).first<{total:number;scanned:number|null;due:number|null;errors:number|null}>();
+ const coverage=await c.env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN last_checked>0 THEN 1 ELSE 0 END) AS scanned, SUM(CASE WHEN last_checked<? THEN 1 ELSE 0 END) AS due, SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN last_success>=? AND last_error IS NULL THEN 1 ELSE 0 END) AS recent FROM collection_jobs')
+  .bind(now()-PROVIDER_INTERVAL_SECONDS,now()-PROVIDER_INTERVAL_SECONDS).first<{total:number;scanned:number|null;due:number|null;errors:number|null;recent:number|null}>();
  const healthy=!!c.env.OPENROUTER_API_KEY&&!!sync?.last_success&&!sync?.last_error&&now()-sync.last_success<2*CATALOG_INTERVAL_SECONDS
   &&(coverage?.total===0 || (coverage?.scanned||0)>0);
- return c.json({status:healthy?'ok':'degraded',models:total?.count||0,catalog_last_success:sync?.last_success||null,catalog_error:sync?.last_error||null,provider_monitoring:'all_models',provider_total:coverage?.total||0,provider_scanned:coverage?.scanned||0,provider_due:coverage?.due||0,provider_errors:coverage?.errors||0,catalog_interval_seconds:CATALOG_INTERVAL_SECONDS,provider_interval_seconds:PROVIDER_INTERVAL_SECONDS,scheduler_interval_seconds:ALARM_INTERVAL_MS/1000,server_time:now()},healthy?200:503);
+ return c.json({status:healthy?'ok':'degraded',models:total?.count||0,catalog_last_success:sync?.last_success||null,catalog_error:sync?.last_error||null,provider_monitoring:'all_models',provider_total:coverage?.total||0,provider_scanned:coverage?.scanned||0,provider_due:coverage?.due||0,provider_errors:coverage?.errors||0,provider_recent:coverage?.recent||0,catalog_interval_seconds:CATALOG_INTERVAL_SECONDS,provider_interval_seconds:PROVIDER_INTERVAL_SECONDS,scheduler_interval_seconds:ALARM_INTERVAL_MS/1000,server_time:now()},healthy?200:503);
 });
 app.get('/api/stats',async c=>{
  const [models,providers,subscriptions,events]=await Promise.all([
@@ -45,19 +46,22 @@ app.get('/api/stats',async c=>{
 });
 app.get('/api/analytics', async c => {
  const window = analyticsWindow(c.req.query('days'), now());
- const [eventRows, modelKinds, topProviders] = await Promise.all([
+ const [eventRows, modelKinds, topProviders, priceDimensions] = await Promise.all([
   c.env.DB.prepare("SELECT date(created_at,'unixepoch') AS day,kind,COUNT(*) AS count FROM price_events WHERE quality='observed' AND created_at>=? AND created_at<=? GROUP BY date(created_at,'unixepoch'),kind ORDER BY day ASC")
    .bind(window.from,window.to).all<{day:string;kind:string;count:number}>(),
   c.env.DB.prepare("SELECT model_kind AS kind,COUNT(*) AS count FROM models WHERE lifecycle_status='active' GROUP BY model_kind ORDER BY count DESC")
    .all<{kind:string;count:number}>(),
   c.env.DB.prepare("SELECT provider,COUNT(DISTINCT model_id) AS models,COUNT(*) AS endpoints FROM endpoints WHERE source='provider' AND status='active' GROUP BY provider ORDER BY models DESC,endpoints DESC,provider COLLATE NOCASE ASC LIMIT 6")
-   .all<{provider:string;models:number;endpoints:number}>()
+   .all<{provider:string;models:number;endpoints:number}>(),
+  c.env.DB.prepare("SELECT dimension,COUNT(*) AS count FROM price_events WHERE quality='observed' AND kind IN ('price.increased','price.decreased','image.price_increased','image.price_decreased') AND created_at>=? AND dimension IS NOT NULL GROUP BY dimension ORDER BY count DESC LIMIT 12")
+   .bind(window.from).all<{dimension:string;count:number}>()
  ]);
  return c.json({
   days:window.days,from:window.from,to:window.to,updatedAt:now(),
   daily:buildDailyAnalytics(eventRows.results||[],window.from,window.days),
   modelKinds:modelKinds.results||[],
-  topProviders:topProviders.results||[]
+  topProviders:topProviders.results||[],
+  priceDimensions:priceDimensions.results||[]
  });
 });
 app.get('/api/models',async c=>{
@@ -84,14 +88,14 @@ app.get('/api/models',async c=>{
  AND COALESCE(m.context_length,0)>=?
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.architecture.input_modalities'),'[]')) j WHERE lower(j.value)=lower(?)))
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.supported_parameters'),'[]')) j WHERE lower(j.value)=lower(?)))
- AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=?))`;
- const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0] as const;
+ AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=? AND (?='' OR x.provider=?)))`;
+ const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0,provider,provider] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,
-   (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL) AS lowest_input,
+   (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL AND (?='' OR e.provider=?)) AS lowest_input,
    (SELECT COUNT(DISTINCT e.provider) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active') AS provider_count
    FROM models m WHERE ${where} ORDER BY ${order[sort]||order.name} LIMIT ? OFFSET ?`)
-    .bind(...binds,limit,(page-1)*limit).all(),
+    .bind(provider,provider,...binds,limit,(page-1)*limit).all(),
   c.env.DB.prepare(`SELECT COUNT(*) AS total FROM models m WHERE ${where}`).bind(...binds).first<{total:number}>()
  ]);
  return c.json({data:rows.results,page,limit,total:count?.total||0});
@@ -107,7 +111,7 @@ app.get('/api/model',async c=>{
  const [model,job,endpoints]=await Promise.all([
   c.env.DB.prepare('SELECT id,name,description,context_length,expiration_date,alias_target,capabilities_json,updated_at,model_kind,lifecycle_status FROM models WHERE id=?').bind(id).first(),
   c.env.DB.prepare('SELECT last_checked,last_success,last_error FROM collection_jobs WHERE model_id=?').bind(id).first<{last_checked:number;last_success:number;last_error:string|null}>(),
-  c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,e.checked_at,e.first_seen FROM endpoints e WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
+  c.env.DB.prepare("SELECT e.id,e.provider,e.tag,e.source,e.input_price,e.output_price,e.pricing_json,e.status,CASE WHEN e.source='provider' AND j.last_success>0 THEN j.last_success ELSE e.checked_at END AS checked_at,e.first_seen FROM endpoints e LEFT JOIN collection_jobs j ON j.model_id=e.model_id WHERE e.model_id=? ORDER BY e.source DESC,e.provider,e.tag").bind(id).all()
  ]);
  if(!model)return c.json({error:'Model not found'},404);
  const success=job?.last_success||0;
@@ -122,22 +126,31 @@ app.get('/api/model',async c=>{
 app.get('/api/price-history',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
  const provider=(c.req.query('provider')||'').slice(0,150);
- const dimension=c.req.query('dimension')==='output'?'output':'input';
  const image=c.req.query('mode')==='image';
+ const dimension=(c.req.query('dimension')||'input').slice(0,80);
+ const source=c.req.query('source')==='model'?'model':'provider';
  if(!modelId)return c.json({error:'model_id is required'},400);
+ const units=Object.values(PRICE_FIELDS);
+ if(!image&&!units.some(item=>item.dimension===dimension))return c.json({error:'unknown price dimension'},400);
  const requested=Number(c.req.query('since'));
  const oldest=now()-180*86400;
  const since=Number.isFinite(requested)&&requested>0?Math.min(now(),Math.max(oldest,requested)):now()-90*86400;
- if(image){
-  // Image tariffs use their own unit-qualified dimension; never mix them with USD/token.
-  // Historical image prices are available only after an actual change event was seen.
-  const rows=await c.env.DB.prepare("SELECT pe.endpoint_id,pe.model_id,pe.provider,ep.tag,pe.dimension,pe.new_price AS price,pe.created_at AS observed_at FROM price_events pe LEFT JOIN endpoints ep ON ep.id=pe.endpoint_id WHERE pe.model_id=? AND (?='' OR pe.provider=?) AND pe.kind IN ('image.price_increased','image.price_decreased') AND pe.quality='observed' AND pe.new_price IS NOT NULL AND pe.created_at>=? ORDER BY pe.created_at ASC,pe.provider ASC LIMIT 2000")
-   .bind(modelId,provider,provider,since).all();
-  return c.json({data:rows.results,unit:'USD per image billing item',method:'observed_price_change_events',retention_days:180});
- }
- const rows=await c.env.DB.prepare("SELECT h.endpoint_id,h.model_id,h.provider,ep.tag,h.source,h.dimension,h.price,h.observed_at FROM price_history h LEFT JOIN endpoints ep ON ep.id=h.endpoint_id WHERE h.model_id=? AND h.source='provider' AND (?='' OR h.provider=?) AND h.dimension=? AND h.observed_at>=? ORDER BY h.observed_at ASC,h.provider ASC LIMIT 2000")
-  .bind(modelId,provider,provider,dimension,since).all();
- return c.json({data:rows.results,unit:'USD/token',method:'observed_change_points',retention_days:180});
+ const filter=image?"h.dimension LIKE 'image/%'":"h.dimension=?";
+ const value=image?'':dimension;
+ const sql=`SELECT h.endpoint_id,h.model_id,h.provider,ep.tag,h.source,h.dimension,h.unit,h.price,h.observed_at
+  FROM price_observations h LEFT JOIN endpoints ep ON ep.id=h.endpoint_id
+  WHERE h.model_id=? AND h.source=? AND (?='' OR h.provider=?) AND ${filter} AND h.observed_at>=?
+  UNION ALL
+  SELECT h.endpoint_id,h.model_id,h.provider,ep.tag,h.source,h.dimension,h.unit,h.price,h.observed_at
+  FROM price_observations h LEFT JOIN endpoints ep ON ep.id=h.endpoint_id
+  WHERE h.model_id=? AND h.source=? AND (?='' OR h.provider=?) AND ${filter} AND h.observed_at<? AND NOT EXISTS(
+   SELECT 1 FROM price_observations later WHERE later.endpoint_id=h.endpoint_id AND later.dimension=h.dimension
+   AND later.observed_at<? AND later.observed_at>h.observed_at)
+  ORDER BY observed_at ASC LIMIT 2000`;
+ const args=image?[modelId,source,provider,provider,since,modelId,source,provider,provider,since,since]
+  :[modelId,source,provider,provider,value,since,modelId,source,provider,provider,value,since,since];
+ const rows=await c.env.DB.prepare(sql).bind(...args).all();
+ return c.json({data:rows.results,unit:image?'mixed':units.find(x=>x.dimension===dimension)?.unit,method:'observed_baseline_and_change_points',retention_days:180,window_start:since,dimensions:image?[]:units});
 });
 app.get('/api/events',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
@@ -192,7 +205,7 @@ app.get('/feed.xml',async c=>{
  return c.body(xml,200,{'Content-Type':'application/rss+xml; charset=utf-8'});
 });
 app.get('/api/subscriptions',requireAuth,async c=>{
- const rows=await c.env.DB.prepare(`SELECT s.id,s.model_id,m.name,s.provider,s.events_json,s.threshold_pct,s.frequency,s.paused,s.created_at,
+ const rows=await c.env.DB.prepare(`SELECT s.id,s.model_id,m.name,s.provider,s.price_dimension,s.events_json,s.threshold_pct,s.frequency,s.paused,s.created_at,
  (SELECT MAX(n.created_at) FROM notifications n WHERE n.subscription_id=s.id) AS last_hit,
  (SELECT MAX(n.sent_at) FROM notifications n WHERE n.subscription_id=s.id) AS last_sent,
  (SELECT n.status FROM notifications n WHERE n.subscription_id=s.id ORDER BY n.created_at DESC LIMIT 1) AS latest_status
@@ -203,6 +216,7 @@ app.get('/api/subscriptions',requireAuth,async c=>{
 const subSchema=z.object({
  model_id:z.string().min(3).max(200),
  provider:z.string().trim().max(150).nullable().optional(),
+ price_dimension:z.string().trim().max(200).nullable().optional(),
  events:z.array(z.enum(EVENT_KINDS as [typeof EVENT_KINDS[number],...typeof EVENT_KINDS[number][]])).min(1).max(EVENT_KINDS.length),
  threshold_pct:z.number().min(0).max(1000).default(0),
  frequency:z.enum(['instant','daily']).default('instant')
@@ -215,8 +229,8 @@ app.post('/api/subscriptions',requireAuth,async c=>{
  const model=await c.env.DB.prepare('SELECT id FROM models WHERE id=?').bind(parsed.data.model_id).first();
  if(!model)return c.json({error:'Unknown model; wait for initial catalogue sync'},404);
  const id=crypto.randomUUID();
- await c.env.DB.prepare(`INSERT INTO subscriptions(id,user_id,model_id,provider,events_json,threshold_pct,frequency,created_at)
-   VALUES(?,?,?,?,?,?,?,?)`).bind(id,c.get('userId'),parsed.data.model_id,parsed.data.provider||null,JSON.stringify(parsed.data.events),parsed.data.threshold_pct,parsed.data.frequency,now()).run();
+ await c.env.DB.prepare(`INSERT INTO subscriptions(id,user_id,model_id,provider,price_dimension,events_json,threshold_pct,frequency,created_at)
+   VALUES(?,?,?,?,?,?,?,?,?)`).bind(id,c.get('userId'),parsed.data.model_id,parsed.data.provider||null,parsed.data.price_dimension||null,JSON.stringify(parsed.data.events),parsed.data.threshold_pct,parsed.data.frequency,now()).run();
  return c.json({id},201);
 });
 app.patch('/api/subscriptions/:id',requireAuth,async c=>{
@@ -224,16 +238,17 @@ app.patch('/api/subscriptions/:id',requireAuth,async c=>{
   .safeParse(await c.req.json().catch(()=>null));
  if(!parsed.success)return c.json({error:'Invalid update',details:parsed.error.flatten().fieldErrors},400);
  const userId=c.get('userId'),id=c.req.param('id');
- const old=await c.env.DB.prepare('SELECT id,provider,events_json,threshold_pct,frequency,paused FROM subscriptions WHERE id=? AND user_id=?')
-  .bind(id,userId).first<{provider:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number}>();
+ const old=await c.env.DB.prepare('SELECT id,provider,price_dimension,events_json,threshold_pct,frequency,paused FROM subscriptions WHERE id=? AND user_id=?')
+  .bind(id,userId).first<{provider:string|null;price_dimension:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number}>();
  if(!old)return c.json({error:'Subscription not found'},404);
  const d=parsed.data;
  const provider=d.provider===undefined?old.provider:d.provider||null;
+ const priceDimension=d.price_dimension===undefined?old.price_dimension:d.price_dimension||null;
  const events=d.events===undefined?old.events_json:JSON.stringify(d.events);
  const threshold=d.threshold_pct??old.threshold_pct,frequency=d.frequency??old.frequency;
  const paused=d.paused===undefined?old.paused:(d.paused?1:0);
- await c.env.DB.prepare('UPDATE subscriptions SET provider=?,events_json=?,threshold_pct=?,frequency=?,paused=? WHERE id=? AND user_id=?')
-  .bind(provider,events,threshold,frequency,paused,id,userId).run();
+ await c.env.DB.prepare('UPDATE subscriptions SET provider=?,price_dimension=?,events_json=?,threshold_pct=?,frequency=?,paused=? WHERE id=? AND user_id=?')
+  .bind(provider,priceDimension,events,threshold,frequency,paused,id,userId).run();
  if(paused){
   await c.env.DB.prepare("UPDATE notifications SET status='suppressed' WHERE subscription_id=? AND user_id=? AND status IN ('pending','sending')")
    .bind(id,userId).run();

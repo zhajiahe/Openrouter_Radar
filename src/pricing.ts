@@ -17,11 +17,33 @@ export type PriceDelta={
  kind:Extract<EventKind,'price.increased'|'price.decreased'|'price.policy_changed'>;
  dimension:string;oldPrice:string|null;newPrice:string|null;percent:number|null;
 };
+export const PRICE_FIELDS:Record<string,{dimension:string;unit:string}> = {
+ prompt:{dimension:'input',unit:'USD/token'},completion:{dimension:'output',unit:'USD/token'},
+ input_cache_read:{dimension:'cache_read',unit:'USD/token'},
+ input_cache_write:{dimension:'cache_write',unit:'USD/token'},
+ input_cache_write_1h:{dimension:'cache_write_1h',unit:'USD/token'},
+ internal_reasoning:{dimension:'internal_reasoning',unit:'USD/token'},
+ image_token:{dimension:'image_token',unit:'USD/token'},
+ input_audio_cache:{dimension:'input_audio_cache',unit:'USD/token'},
+ image:{dimension:'image',unit:'USD/image'},
+ image_output:{dimension:'image_output',unit:'USD/image'},
+ audio:{dimension:'audio',unit:'USD/second'},
+ audio_output:{dimension:'audio_output',unit:'USD/second'},
+ request:{dimension:'request',unit:'USD/request'},
+ web_search:{dimension:'web_search',unit:'USD/search'}
+};
+export function observedPrices(prices:Prices):{dimension:string;unit:string;price:string}[]{
+ return Object.entries(PRICE_FIELDS).flatMap(([field,meta])=>{
+  const price=field==='prompt'?prices.prompt:field==='completion'?prices.completion:normalizePrice(prices.raw[field]);
+  return price===null?[]:[{...meta,price}];
+ });
+}
 const DIMENSIONS:Record<string,string>={
  prompt:'input',completion:'output',input_cache_read:'cache_read',
  input_cache_write:'cache_write',input_cache_write_1h:'cache_write_1h',
  image:'image',audio:'audio',request:'request',web_search:'web_search',
- internal_reasoning:'internal_reasoning'
+ internal_reasoning:'internal_reasoning',image_token:'image_token',image_output:'image_output',
+ audio_output:'audio_output',input_audio_cache:'input_audio_cache'
 };
 function stable(value:unknown):unknown{
  if(Array.isArray(value))return value.map(stable);
@@ -35,10 +57,11 @@ function stable(value:unknown):unknown{
 function policyText(value:unknown):string|null{
  return value===undefined?null:JSON.stringify(stable(value));
 }
-const MONETARY_DIMENSIONS=new Set([
- 'prompt','completion','input_cache_read','input_cache_write','input_cache_write_1h',
- 'image','audio','request','web_search','internal_reasoning'
-]);
+const MONETARY_DIMENSIONS=new Set(Object.keys(PRICE_FIELDS));
+function scheduledPricing(previous:Prices,current:Prices):boolean{
+ const a=policyText(previous.raw.overrides),b=policyText(current.raw.overrides);
+ return a!==null&&a===b&&/"utc_(?:start|end)"/.test(a);
+}
 /** Only confirmed monetary dimensions may be labelled "price went up/down".
  * Metadata such as "discount" is a policy change, not the dollar cost of a request. */
 export function findPriceChanges(previous:Prices,current:Prices):PriceDelta[]{
@@ -64,6 +87,12 @@ export function findPriceChanges(previous:Prices,current:Prices):PriceDelta[]{
   }
   const oldNumber=new Decimal(oldValue),newNumber=new Decimal(newValue);
   if(oldNumber.eq(newNumber))continue;
+  // Unchanged scheduled UTC tariffs may switch active rates without an unconditional price edit.
+  if((key==='prompt'||key==='completion')&&scheduledPricing(previous,current)){
+   result.push({kind:'price.policy_changed',dimension:'scheduled_'+dimension,
+    oldPrice:oldValue,newPrice:newValue,percent:null});
+   continue;
+  }
   result.push({
    kind:newNumber.gt(oldNumber)?'price.increased':'price.decreased',dimension,
    oldPrice:oldValue,newPrice:newValue,

@@ -83,3 +83,10 @@ React UI -> Hono routes -> D1 (auth + models + endpoints + rules + events)
 
 对外接口见 [API 文档](docs/api.md)，本项目遵循仓库现有 [Apache-2.0 LICENSE](LICENSE)。
 
+
+
+### 计价维度完整性升级
+- 支持缓存读取、缓存写入（包括 1h）、推理、图片、音频和按请求/搜索的报价维度，并标注每项 USD 计费单位。
+- 图片模型保存每项图片收费基准及真实变价点；历史图采用阶梯线，窗口开始前的真实观察只以原始时间展示。
+- D1 升级使用 `0008_price_observations.sql`：复制既有 input/output 历史到可扩展多单位时间序列表，不改写历史时间。其他已有报价等待后续成功扫描才建立新的可信基准。
+- OpenRouter 模型目录查询显式选择全部输出模态，图表可按 Provider、价格维度及聚合报价查看；不引入计费网关。

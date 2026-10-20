@@ -9,8 +9,8 @@ const models=[
  {id:IMAGE_ID,name:'Studio Image Generator',context_length:8192,updated_at:now-7200,lowest_input:null,provider_count:1,model_kind:'image',lifecycle_status:'active'},
 ];
 const endpoints=[
- {id:'endpoint-a',provider:'Provider With A Long Name',tag:'default',source:'provider',input_price:'0.0000015',output_price:'0.000004',status:'active',checked_at:now-1800,pricing_json:'{}'},
- {id:'endpoint-b',provider:'Fast Provider',tag:'low-latency',source:'provider',input_price:'0.0000018',output_price:'0.000003',status:'active',checked_at:now-2400,pricing_json:'{}'},
+ {id:'endpoint-a',provider:'Provider With A Long Name',tag:'default',source:'provider',input_price:'0.0000015',output_price:'0.000004',status:'active',checked_at:now-1800,pricing_json:'{"input_cache_read":"0.00000015","input_cache_write":"0.000002","input_cache_write_1h":"0.000003"}'},
+ {id:'endpoint-b',provider:'Fast Provider',tag:'low-latency',source:'provider',input_price:'0.0000018',output_price:'0.000003',status:'active',checked_at:now-2400,pricing_json:'{"input_cache_read":"0.00000018","input_cache_write":"0.0000025"}'},
 ];
 const sampleEvents=[
  {id:'evt-1',model_id:MODEL_ID,provider:'Provider With A Long Name',kind:'price.decreased',dimension:'input',old_price:'0.000002',new_price:'0.0000015',change_pct:-25,created_at:now-3600},
@@ -38,21 +38,24 @@ function dataFor(url:URL):object{
   const id=url.searchParams.get('id')||MODEL_ID;
   const model=models.find(m=>m.id===id)||models[0];
   const image=model.model_kind==='image';
-  return {model,endpoints:image?[{...endpoints[0],id:'img-a',provider:'Image Provider',input_price:null,output_price:null,pricing_json:'{"image_pricing":{"square":"0.03"}}'}]:endpoints,
+  return {model,endpoints:image?[{...endpoints[0],id:'img-a',provider:'Image Provider',input_price:null,output_price:null,pricing_json:'{"image_pricing":[{"billable":"output_image","unit":"image","cost_usd":"0.03","conditions":"{}"}]}'}]:endpoints,
    collection:{status:'fresh',last_attempt:now-1100,last_success:now-1200,last_error:null,age_seconds:1200,active_endpoints:image?1:2,missing_endpoints:0}};
  }
  if(path==='/api/price-history'){
   const image=url.searchParams.get('mode')==='image';
   const id=url.searchParams.get('model_id')||MODEL_ID;
   const points=image?[
-   {endpoint_id:'img-a',provider:'Image Provider',model_id:id,dimension:'image.square',price:'0.03',observed_at:now-7*86400},
-   {endpoint_id:'img-a',provider:'Image Provider',model_id:id,dimension:'image.square',price:'0.02',observed_at:now-2*86400},
+   {endpoint_id:'img-a',provider:'Image Provider',model_id:id,dimension:'image/output_image/image',unit:'USD/image',price:'0.03',observed_at:now-7*86400},
+   {endpoint_id:'img-a',provider:'Image Provider',model_id:id,dimension:'image/output_image/image',unit:'USD/image',price:'0.02',observed_at:now-2*86400},
   ]:[
-   {endpoint_id:'endpoint-a',provider:'Provider With A Long Name',model_id:id,dimension:'input',price:'0.000002',observed_at:now-7*86400},
-   {endpoint_id:'endpoint-a',provider:'Provider With A Long Name',model_id:id,dimension:'input',price:'0.0000015',observed_at:now-2*86400},
-   {endpoint_id:'endpoint-b',provider:'Fast Provider',model_id:id,dimension:'input',price:'0.0000018',observed_at:now-5*86400},
+   {endpoint_id:'endpoint-a',provider:'Provider With A Long Name',model_id:id,dimension:'input',unit:'USD/token',price:'0.000002',observed_at:now-7*86400},
+   {endpoint_id:'endpoint-a',provider:'Provider With A Long Name',model_id:id,dimension:'input',unit:'USD/token',price:'0.0000015',observed_at:now-2*86400},
+   {endpoint_id:'endpoint-b',provider:'Fast Provider',model_id:id,dimension:'input',unit:'USD/token',price:'0.0000018',observed_at:now-5*86400},
   ];
-  return {data:points,unit:'USD/token',method:'observed_change_points',retention_days:180};
+  const dim=url.searchParams.get('dimension')||'input';
+  const selected=image?points:dim==='input'?points:dim==='cache_read'?[{endpoint_id:'endpoint-a',provider:'Provider With A Long Name',model_id:id,dimension:'cache_read',unit:'USD/token',price:'0.00000015',observed_at:now-7*86400}]:[];
+  return {data:selected,unit:image?'mixed':'USD/token',method:'observed_baseline_and_change_points',retention_days:180,window_start:now-90*86400,
+   dimensions:image?[]:[{dimension:'input',unit:'USD/token'},{dimension:'output',unit:'USD/token'},{dimension:'cache_read',unit:'USD/token'},{dimension:'cache_write',unit:'USD/token'},{dimension:'cache_write_1h',unit:'USD/token'}]};
  }
  if(path==='/api/events'){
   const model=url.searchParams.get('model_id')||'';
@@ -70,7 +73,7 @@ function dataFor(url:URL):object{
    const priceUp=i%3===0?3:0,priceDown=i%2===0?2:0,lifecycle=i%4===0?1:0,other=i%5===0?1:0;
    return {date,total:priceUp+priceDown+lifecycle+other,priceUp,priceDown,lifecycle,other};
   });
-  return {days,from:now-days*86400,to:now,updatedAt:now,daily,modelKinds:[{kind:'standard',count:1320},{kind:'image',count:109}],topProviders:[{provider:'Provider With A Long Name',models:704,endpoints:706},{provider:'Fast Provider',models:433,endpoints:460}]};
+  return {days,from:now-days*86400,to:now,updatedAt:now,daily,modelKinds:[{kind:'standard',count:1320},{kind:'image',count:109}],topProviders:[{provider:'Provider With A Long Name',models:704,endpoints:706},{provider:'Fast Provider',models:433,endpoints:460}],priceDimensions:[{dimension:'cache_read',count:3},{dimension:'input',count:2}]};
  }
  if(path==='/api/subscriptions'||path==='/api/notifications')return {data:[]};
  if(path==='/api/my-stats')return {subscriptions:0,unread:0};

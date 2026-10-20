@@ -34,7 +34,8 @@ const sub=(id:string,provider:string|null,threshold_pct:number,events_json='["pr
 });
 test('unmatched events are replayed, filtered, queued and watermarked atomically',async()=>{
  const {env,executed}=stubDb([event],[
-  sub('eligible',null,15),
+  {...sub('matching-dimension',null,15),price_dimension:'input'},
+  {...sub('wrong-dimension',null,15),price_dimension:'cache_read'},
   sub('too-high',null,30),
   sub('wrong-provider','Provider B',0),
   sub('wrong-kind',null,0,'["price.increased"]')
@@ -43,7 +44,7 @@ test('unmatched events are replayed, filtered, queued and watermarked atomically
  assert.equal(executed.length,1);
  assert.equal(executed[0].length,2);
  assert.match(executed[0][0].sql,/INSERT OR IGNORE INTO notifications/);
- assert.equal(executed[0][0].args[1],'eligible');
+ assert.equal(executed[0][0].args[1],'matching-dimension');
  assert.equal(executed[0][0].args[2],'evt1');
  assert.match(executed[0][1].sql,/matched_at/);
  assert.equal(executed[0][1].args[1],'evt1');
@@ -53,4 +54,12 @@ test('unmatched events with no subscribers still advance the replay watermark',a
  assert.equal(await matchUnmatchedEvents(env),1);
  assert.equal(executed[0].length,1);
  assert.match(executed[0][0].sql,/UPDATE price_events/);
+});
+
+test('subscription price dimensions do not suppress independent lifecycle events',async()=>{
+ const incident={...event,id:'evt2',kind:'endpoint.added',dimension:null,change_pct:null};
+ const {env,executed}=stubDb([incident],[{...sub('subscriber',null,0,'["endpoint.added"]'),price_dimension:'cache_read'}]);
+ assert.equal(await matchUnmatchedEvents(env),1);
+ assert.equal(executed[0].length,2);
+ assert.equal(executed[0][0].args[1],'subscriber');
 });

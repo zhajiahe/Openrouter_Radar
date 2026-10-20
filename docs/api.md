@@ -78,7 +78,7 @@ The Durable Object alarm wakes each minute. The full model catalogue refreshes o
 ## Expanded monitoring, comparison and exports
 
 - GET /api/model?id=... returns collection metadata (fresh/stale/error/never), last attempted and successful Provider scans, plus sanitized errors.
-- GET /api/price-history?model_id=...&provider=...&dimension=input|output returns sparse observed baseline/change points, not fictitious hourly samples. 180-day retention.
+- GET /api/price-history?model_id=...&provider=...&dimension=input|output|cache_read|cache_write|cache_write_1h|... returns sparse observed baseline/change points for known monetary dimensions with explicit units. Use source=model to see the aggregate quote; mode=image for image-unit observations. Includes the last real observation from before the requested window when available, with its actual observed_at timestamp. 180-day retention; no invented hourly samples.
 - GET /api/models additionally accepts author, modality, capability, min_context and max_input_price (USD per million Token). Price comparisons only reflect recorded base Token quotes.
 - GET /api/events additionally accepts provider, start, end (Unix seconds). GET /api/events/export with the same filters supports CSV or JSON with a maximum 1,000 rows per request. RSS supports page=.
 - PATCH /api/subscriptions/:id edits provider, events, threshold_pct, frequency and paused (boolean). Pausing suppresses queued alerts and new event matching.
@@ -87,3 +87,15 @@ The Durable Object alarm wakes each minute. The full model catalogue refreshes o
 - New quality classification: public GET /api/events, /api/events/export, /feed.xml, and 24-hour stats default to quality='observed'. GET /api/events?include_baseline=1 and export?include_baseline=1 retain audit access to legacy baseline_noise entries. CSV/JSON exports include quality.
 - Discount changes and previously unrecognized numeric pricing fields are policy changes, not price.increased / price.decreased.
 - Legacy records with placeholder '{}' capabilities and companion initial alias / expiration metadata are retained as baseline_noise instead of promoted to market events.
+
+## Complete unit-aware price observations (2026-10-20)
+
+- Subscriptions accept optional `price_dimension` (such as `cache_read`) to restrict price-change alerts to that exact charge category; NULL preserves the all-dimensions behavior, and model lifecycle alerts remain unaffected.
+
+- `/api/v1/models?output_modalities=all` requests the full published modality catalog; dedicated image endpoints remain authoritative for per-image billing. Different catalog sources have distinct success watermarks.
+- Prices are stored in `price_observations` with `dimension`, `unit` and `observed_at`. The original two-dimension `price_history` table is retained for migration compatibility and its real rows are copied without altering timestamps.
+- New cache, audio, request, image and auxiliary dimensions are seeded only after a *successful actual Provider scan*; legacy history is not fabricated.
+- `input_cache_read`, `input_cache_write`, `input_cache_write_1h`, `image_token`, `input_audio_cache` and `internal_reasoning` use USD/token. `audio` and `audio_output` use USD/second; `image` and `image_output` use USD/image; `request` USD/request; `web_search` USD/search.
+- Unknown numeric pricing keys remain policy events, not unverified USD increases. Unchanged UTC override schedules which switch effective top-level rates use `price.policy_changed` with a `scheduled_*` dimension rather than unconditional increased/decreased.
+- `/api/health` reports `provider_recent` (successful scans during the preceding hour), separately from `provider_scanned` (ever scanned).
+- `/api/analytics` adds `priceDimensions` for observed price change dimensions within the requested analytics window.
