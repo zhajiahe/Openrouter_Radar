@@ -90,7 +90,7 @@ async function syncCatalog(env:Bindings,kind:'standard'|'image',fetcher:typeof l
    // Hourly HTTP sync must not imply hourly D1 writes. Preserve stable updated_at/history.
    if(modelChanged)stmts.push(env.DB.prepare("INSERT INTO models (id,name,description,pricing_json,context_length,capabilities_json,expiration_date,alias_target,updated_at,model_kind,lifecycle_status,missing_count) VALUES(?,?,?,?,?,?,?,?,?,?, 'active',0) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,pricing_json=excluded.pricing_json,context_length=excluded.context_length,capabilities_json=excluded.capabilities_json,expiration_date=excluded.expiration_date,alias_target=excluded.alias_target,updated_at=CASE WHEN models.name<>excluded.name OR models.description<>excluded.description OR models.pricing_json<>excluded.pricing_json OR models.context_length IS NOT excluded.context_length OR models.capabilities_json<>excluded.capabilities_json OR models.expiration_date IS NOT excluded.expiration_date OR models.alias_target IS NOT excluded.alias_target THEN excluded.updated_at ELSE models.updated_at END,model_kind=excluded.model_kind,lifecycle_status='active',missing_count=0")
     .bind(m.id,m.name,description,rawJson,state.context_length,state.capabilities_json,state.expiration_date,state.alias_target,current,kind));
-   if(aggregateChanged)stmts.push(env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET input_price=excluded.input_price,output_price=excluded.output_price,pricing_json=excluded.pricing_json,status='active',missing_count=0,checked_at=excluded.checked_at")
+   if(aggregateChanged)stmts.push(env.DB.prepare("INSERT INTO endpoints (id,model_id,provider,tag,source,input_price,output_price,pricing_json,first_seen,checked_at,history_seeded) VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(id) DO UPDATE SET input_price=excluded.input_price,output_price=excluded.output_price,pricing_json=excluded.pricing_json,status='active',missing_count=0,checked_at=excluded.checked_at")
     .bind(aggregate,m.id,MODEL_PROVIDER,'__model__','model',prices.prompt,prices.completion,rawJson,current,current));
    if(!old)stmts.push(env.DB.prepare('INSERT OR IGNORE INTO collection_jobs(model_id) VALUES(?)').bind(m.id));
    if(aggregateChanged)stmts.push(...historyStatements(env,aggregate,m.id,MODEL_PROVIDER,'model',prices,old?storedPrices(old.pricing_json):null,current));
@@ -228,10 +228,20 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
    ?await imageFetcher(modelId,env.OPENROUTER_API_KEY)
    :await fetcher(modelId,env.OPENROUTER_API_KEY);
   if(items.length===0)throw new Error('Empty endpoint response; no removal inferred');
-  const existing=await env.DB.prepare("SELECT id,provider,tag,input_price,output_price,pricing_json,history_seeded,stable_key,status,missing_count FROM endpoints WHERE model_id=? AND source='provider'")
-   .bind(modelId).all<Existing>();
-  const prev=new Set(existing.results.map(r=>r.id));
-  const seen=new Set<string>(),initial=existing.results.filter(r=>r.status!=='superseded').length===0;
+  const stored=await env.DB.prepare("SELECT id,provider,tag,source,input_price,output_price,pricing_json,history_seeded,stable_key,status,missing_count FROM endpoints WHERE model_id=?")
+   .bind(modelId).all<Existing&{source:string}>();
+  // Legacy aggregate rows never tracked history_seeded. Backfill *missing*
+  // pricing dimensions once per model, at the next real successful scan.
+  const aggregate=stored.results.find(r=>r.source==='model');
+  if(aggregate&&aggregate.history_seeded!==1){
+   await env.DB.batch([
+    ...missingHistoryStatements(env,aggregate.id,modelId,aggregate.provider,'model',storedPrices(aggregate.pricing_json),current),
+    env.DB.prepare('UPDATE endpoints SET history_seeded=1 WHERE id=?').bind(aggregate.id)
+   ]);
+  }
+  const existing=stored.results.filter(r=>r.source==='provider');
+  const prev=new Set(existing.map(r=>r.id));
+  const seen=new Set<string>(),initial=existing.filter(r=>r.status!=='superseded').length===0;
   const assigned=new Set<string>();
   const counts=new Map<string,number>();
   for(const item of items){
@@ -258,7 +268,7 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
    const key=baseKey+suffix;
    // Legacy database keys can include quantization/tier/name. Reuse their IDs
    // to retain historical events and price points rather than rekeying FKs.
-   const candidates=existing.results.filter(r=>r.status!=='superseded'&&!seen.has(r.id)&&
+   const candidates=existing.filter(r=>r.status!=='superseded'&&!seen.has(r.id)&&
     (r.stable_key===key||(r.stable_key===null||r.stable_key===baseKey)&&(r.provider===provider&&r.tag===tag)));
    const chosen=candidates.find(r=>r.stable_key===key)??candidates.find(r=>r.status==='active')??candidates[0];
    const id=chosen?.id??await endpointId(modelId,provider,tag,suffix);
@@ -276,7 +286,7 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
      .bind(duplicate.id).run();
    }
   }
-  for(const row of existing.results){
+  for(const row of existing){
    if(seen.has(row.id)||row.status==='missing'||row.status==='superseded')continue;
    const count=row.missing_count+1,stmts:D1PreparedStatement[]=[
     env.DB.prepare('UPDATE endpoints SET missing_count=?,status=?,checked_at=? WHERE id=?')
