@@ -44,7 +44,7 @@ export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(
  const totalEvents=visibleData?.daily.reduce((sum,d)=>sum+d.total,0)??0;
  const priceEvents=visibleData?.daily.reduce((sum,d)=>sum+d.priceUp+d.priceDown,0)??0;
  const activeModels=visibleData?.modelKinds.reduce((sum,k)=>sum+k.count,0)??0;
- const updated=visibleData?.updatedAt?new Date(data.updatedAt*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—';
+ const updated=visibleData?.updatedAt?new Date(visibleData.updatedAt*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—';
  const modelKinds=visibleData?.modelKinds.filter(x=>x.count>0).map((x,i)=>({
   name:kindLabel(x.kind),value:x.count,color:['var(--chart-violet)','var(--chart-down)','var(--chart-up)','var(--chart-muted)'][i%4]
  }))??[];
