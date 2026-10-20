@@ -109,7 +109,7 @@ app.get('/api/price-history',async c=>{
  const dimension=c.req.query('dimension')==='output'?'output':'input';
  if(!modelId)return c.json({error:'model_id is required'},400);
  const since=Math.max(0,Number(c.req.query('since'))||now()-90*86400);
- const rows=await c.env.DB.prepare("SELECT endpoint_id,model_id,provider,source,dimension,price,observed_at FROM price_history WHERE model_id=? AND (?='' OR provider=?) AND dimension=? AND observed_at>=? ORDER BY observed_at ASC,provider ASC LIMIT 2000").bind(modelId,provider,provider,dimension,since).all();
+ const rows=await c.env.DB.prepare("SELECT endpoint_id,model_id,provider,source,dimension,price,observed_at FROM price_history WHERE model_id=? AND source='provider' AND (?='' OR provider=?) AND dimension=? AND observed_at>=? ORDER BY observed_at ASC,provider ASC LIMIT 2000").bind(modelId,provider,provider,dimension,since).all();
  return c.json({data:rows.results,unit:'USD/token',method:'observed_change_points',retention_days:180});
 });
 app.get('/api/events',async c=>{
