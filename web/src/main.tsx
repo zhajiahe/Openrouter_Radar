@@ -342,7 +342,7 @@ function App(){
       </div>
       <div className="panel detail-panel">{selected?<>
        <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}>{"复制链接"} ↗</button></div>
-       <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code></div></div>
+       <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code>{selected.lifecycle_status==='removed'&&<span className="event-tag">已确认下架 · 等待恢复</span>}{selected.model_kind==='image'&&<span className="event-tag">图片生成模型</span>}</div></div>
        <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{collection?.active_endpoints??0}</strong> Active endpoints</span></div>
        <div className={'collection-summary '+(collection?.status||'never')} role="status">
         <strong>采集状态：{collection?.status==='fresh'?'近期成功':collection?.status==='error'?'采集失败':collection?.status==='stale'?'数据可能过期':'尚未成功采集'}</strong>
@@ -357,7 +357,7 @@ function App(){
         {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.status==='superseded'?'已合并的旧端点':ep.tag||'Active'}</small></td><td className="num">{ep.pricing_json.includes('image_pricing')?'按图片独立计价':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'详见计费项目':endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
        </tbody></table>{!endpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
-       <PriceHistory modelId={selected.id} providers={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))]}/>
+       {selected.model_kind==='image'?<div className="empty">图片模型采用按张、百万像素或 Token 等不同计费单位。上方查看 Provider 的原始计费项目；下方事件历史记录同单位的真实报价变化，不使用 Token 价格曲线。</div>:<PriceHistory modelId={selected.id} providers={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))]}/>}
        <div className="detail-section-head"><h3>Recent changes</h3><small>仅记录首次快照后的实际变化</small></div>
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
