@@ -35,19 +35,30 @@ function stable(value:unknown):unknown{
 function policyText(value:unknown):string|null{
  return value===undefined?null:JSON.stringify(stable(value));
 }
+const MONETARY_DIMENSIONS=new Set([
+ 'prompt','completion','input_cache_read','input_cache_write','input_cache_write_1h',
+ 'image','audio','request','web_search','internal_reasoning'
+]);
+/** Only confirmed monetary dimensions may be labelled "price went up/down".
+ * Metadata such as "discount" is a policy change, not the dollar cost of a request. */
 export function findPriceChanges(previous:Prices,current:Prices):PriceDelta[]{
  const result:PriceDelta[]=[];
  const keys=new Set([...Object.keys(previous.raw),...Object.keys(current.raw),'prompt','completion']);
  for(const key of ['prompt','completion', ...[...keys].filter(key=>key!=='prompt'&&key!=='completion').sort()]){
   if(key==='overrides')continue;
+  const dimension=DIMENSIONS[key]||key;
   const oldValue=key==='prompt'?previous.prompt:key==='completion'?previous.completion:normalizePrice(previous.raw[key]);
   const newValue=key==='prompt'?current.prompt:key==='completion'?current.completion:normalizePrice(current.raw[key]);
+  if(!MONETARY_DIMENSIONS.has(key)){
+   const oldPolicy=policyText(previous.raw[key]),newPolicy=policyText(current.raw[key]);
+   if(oldPolicy!==newPolicy)result.push({kind:'price.policy_changed',dimension,
+    oldPrice:oldValue??oldPolicy,newPrice:newValue??newPolicy,percent:null});
+   continue;
+  }
   if(oldValue===null&&newValue===null)continue;
-  const dimension=DIMENSIONS[key]||key;
   if(oldValue===null||newValue===null){
-   // Unknown primary prices are missing data, not a pricing policy transition.
+   // Unknown prompt/completion is missing data, not free or a definite change.
    if(key==='prompt'||key==='completion')continue;
-   // A newly introduced/removed fee is a policy change, not a zero-dollar price.
    result.push({kind:'price.policy_changed',dimension,oldPrice:oldValue,newPrice:newValue,percent:null});
    continue;
   }
