@@ -1,0 +1,62 @@
+/* Data visualization uses Mantine Charts, controls and Progress.
+   Shared tokens live in router-inspired.css and the design system. */
+:root{
+ --chart-up:#c65b5b;
+ --chart-down:#189477;
+ --chart-violet:#8066d3;
+ --chart-muted:#a6a4b1;
+}
+html[data-theme="dark"]{
+ --chart-up:#fa9a96;
+ --chart-down:#58d9b4;
+ --chart-violet:#bcabf5;
+ --chart-muted:#898494;
+}
+.analytics-shell{margin:35px 0 40px;min-width:0}
+.analytics-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:18px}
+.analytics-heading h2{font-size:23px;letter-spacing:-.6px;margin:6px 0 4px}
+.analytics-heading p,.chart-heading p,.historic-header p{margin:4px 0 0;color:var(--radar-text-muted);font-size:12px;line-height:1.7}
+.analytics-summary{display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--radar-border);padding-bottom:16px;margin-bottom:17px;flex-wrap:wrap}
+.analytics-summary>div{display:flex;align-items:center;gap:7px;white-space:nowrap;color:var(--radar-text-muted);font-size:12px}
+.analytics-summary strong{font-size:17px;color:var(--radar-text);font-variant-numeric:tabular-nums}
+.analytics-summary>small{margin-left:auto;color:var(--radar-text-tertiary);font-size:11px}
+.analytics-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
+.chart-panel,.historic-card{min-width:0;border:1px solid var(--radar-border);border-radius:10px;background:var(--radar-surface);padding:20px}
+.chart-panel-wide{grid-column:span 12}
+.chart-panel-mix{grid-column:span 5}
+.chart-panel-providers{grid-column:span 7}
+.chart-heading{display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:19px}
+.chart-heading h3,.historic-header h3{color:var(--radar-text);font-size:15px;font-weight:720;margin:0}
+.chart-heading>strong{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chart-panel .mantine-BarChart-root,.historic-card .mantine-LineChart-root{min-width:0}
+.chart-actions{max-width:300px;margin-top:10px}
+.chart-muted{font-size:12px;color:var(--radar-text-tertiary);line-height:1.7}
+.chart-placeholder{min-height:215px;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--radar-text-muted);font-size:12px;text-align:center;padding:20px}
+.chart-inline-error{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;color:var(--radar-danger);font-size:12px}
+.donut-layout{display:flex;align-items:center;justify-content:center;gap:20px;min-height:215px;flex-wrap:wrap}
+.donut-breakdown{flex:1;min-width:125px;display:grid;gap:11px}
+.donut-breakdown>div{display:flex;gap:12px;align-items:center;justify-content:space-between;font-size:12px;color:var(--radar-text-muted)}
+.donut-breakdown strong{color:var(--radar-text);font-variant-numeric:tabular-nums}
+.provider-ranking{display:grid;gap:5px}
+.provider-rank-row{display:block;width:100%;text-align:left;border:1px solid transparent;border-radius:8px;padding:8px;background:transparent;color:inherit;cursor:pointer}
+.provider-rank-row:hover,.provider-rank-row:focus-visible{background:var(--radar-surface-soft);border-color:var(--radar-border)}
+.provider-rank-row>div{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:7px}
+.provider-rank-row strong{font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.provider-rank-row small{display:block;color:var(--radar-text-muted);font-size:10px;margin-top:5px}
+.historic-card{margin:22px 0}
+.historic-header h3{display:flex;align-items:center;gap:9px;font-size:16px;margin-top:5px}
+.historic-controls{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:20px 0 17px}
+.historic-controls>.mantine-Select-root{flex:1 1 140px;min-width:0}
+.historic-controls>.mantine-SegmentedControl-root{flex:none}
+.chart-footline{border-top:1px solid var(--radar-border);padding-top:12px;margin-top:10px;font-size:11px;color:var(--radar-text-muted)}
+@media(max-width:980px){.chart-panel-mix,.chart-panel-providers{grid-column:span 6}}
+@media(max-width:700px){
+ .analytics-shell{margin:25px 0 30px}
+ .analytics-heading{align-items:flex-start;flex-direction:column;gap:12px}
+ .analytics-summary{gap:8px 15px}
+ .analytics-summary>small{width:100%;margin-left:0}
+ .analytics-grid{grid-template-columns:minmax(0,1fr)}
+ .chart-panel-wide,.chart-panel-mix,.chart-panel-providers{grid-column:1}
+ .chart-panel,.historic-card{padding:15px 12px}
+ .historic-controls>.mantine-SegmentedControl-root{width:100%}
+}
