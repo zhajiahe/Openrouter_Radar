@@ -6,41 +6,55 @@ export function notificationText(rows:Pending[],origin:string):string{
  const lines=['OpenRouter Radar · price and endpoint updates','',...rows.map(r=>{
   const isPrice=r.kind==='price.increased'||r.kind==='price.decreased';
   const change=isPrice&&r.old_price!==null&&r.new_price!==null
-   ? ` · ${r.dimension}: ${r.old_price} → ${r.new_price} (upstream pricing unit)`
-   : r.kind==='model.expiring' ? ` · within ${r.new_price||'?'} day(s) of expiry`
-   : r.dimension ? ` · ${r.dimension}: ${(r.old_price||'unknown').slice(0,100)} → ${(r.new_price||'unknown').slice(0,100)}` : '';
-  return `• ${r.model_id} / ${r.provider} — ${r.kind}${change}`;
+   ? ' · '+r.dimension+': '+r.old_price+' → '+r.new_price+' (upstream pricing unit)'
+   : r.kind==='model.expiring' ? ' · within '+(r.new_price||'?')+' day(s) of expiry'
+   : r.dimension ? ' · '+r.dimension+': '+(r.old_price||'unknown').slice(0,100)+' → '+(r.new_price||'unknown').slice(0,100) : '';
+  return '• '+r.model_id+' / '+r.provider+' — '+r.kind+change;
  }), '', 'Manage alerts: '+new URL('/',origin).toString(),'You receive this email because you subscribed to Radar monitoring.'];
  return lines.join('\n');
 }
 export async function deliverPending(env:Bindings):Promise<number>{
  if(!env.RESEND_API_KEY || !env.MAIL_FROM)return 0;
- const pending=await env.DB.prepare(`SELECT n.id,n.user_id,u.email,s.frequency,e.model_id,e.provider,
-  e.kind,e.dimension,e.old_price,e.new_price,e.change_pct,e.created_at,e.id AS event_id
-  FROM notifications n JOIN users u ON u.id=n.user_id JOIN price_events e ON e.id=n.event_id
-  JOIN subscriptions s ON s.id=n.subscription_id
-  WHERE n.status='pending' AND n.next_attempt_at<=? AND n.attempts<5 AND u.email_verified=1
-  ORDER BY n.created_at LIMIT 100`).bind(now()).all<Pending>();
+ const clock=now();
+ // Recover jobs whose previous worker invocation crashed while delivering.
+ const pending=await env.DB.prepare("SELECT n.id,n.user_id,u.email,s.frequency,e.model_id,e.provider,e.kind,e.dimension,e.old_price,e.new_price,e.change_pct,e.created_at,e.id AS event_id FROM notifications n JOIN users u ON u.id=n.user_id JOIN price_events e ON e.id=n.event_id JOIN subscriptions s ON s.id=n.subscription_id WHERE n.status IN ('pending','sending') AND n.next_attempt_at<=? AND n.attempts<5 AND u.email_verified=1 AND s.paused=0 ORDER BY n.created_at LIMIT 100").bind(clock).all<Pending>();
+ const claimed:Pending[]=[];
+ for(const item of pending.results){
+  const update=await env.DB.prepare("UPDATE notifications SET status='sending',next_attempt_at=? WHERE id=? AND status IN ('pending','sending') AND next_attempt_at<=?").bind(clock+180,item.id,clock).run();
+  if(update.meta.changes)claimed.push(item);
+ }
  const groups=new Map<string,Pending[]>();
- for(const item of pending.results) {
+ for(const item of claimed){
   const key=item.user_id+':'+(item.frequency==='daily'?'daily':item.id);
   groups.set(key,[...(groups.get(key)||[]),item]);
  }
  let count=0;
  for(const rows of [...groups.values()].slice(0,20)){
-  const subject=rows.length===1 ? `[Radar] ${rows[0].model_id}: ${rows[0].kind}` : `[Radar] ${rows.length} new monitoring events`;
+  const subject=rows.length===1?'[Radar] '+rows[0].model_id+': '+rows[0].kind:'[Radar] '+rows.length+' new monitoring events';
+  // Stable across the same send attempt even when a worker retries.
+  const ids=rows.map(x=>x.id).sort().join(',');
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ids));
+  const key='radar-'+Array.from(new Uint8Array(digest)).map(n=>n.toString(16).padStart(2,'0')).join('');
   try{
-   await sendEmail(env,rows[0].email,subject,notificationText(rows,env.APP_ORIGIN));
-   for(const item of rows)await env.DB.prepare("UPDATE notifications SET status='sent',sent_at=? WHERE id=? AND status='pending'").bind(now(),item.id).run();
-   count+=rows.length;
-  }catch{
+   await sendEmail(env,rows[0].email,subject,notificationText(rows,env.APP_ORIGIN),key);
    for(const item of rows){
-    const current=await env.DB.prepare('SELECT attempts FROM notifications WHERE id=?').bind(item.id).first<{attempts:number}>();
-    const attempts=(current?.attempts||0)+1;
-    await env.DB.prepare('UPDATE notifications SET attempts=?,next_attempt_at=?,status=? WHERE id=?')
-     .bind(attempts,now()+Math.min(3600,60*2**attempts),attempts>=5?'failed':'pending',item.id).run();
+    await env.DB.prepare("UPDATE notifications SET status='sent',sent_at=?,last_error=NULL WHERE id=? AND status='sending'").bind(now(),item.id).run();
+   }
+   count+=rows.length;
+  }catch(error){
+   const info=String(error).match(/Resend HTTP \d{3}/)?.[0]||'Delivery failed';
+   for(const item of rows){
+    const attempts=await env.DB.prepare('SELECT attempts FROM notifications WHERE id=?').bind(item.id).first<{attempts:number}>();
+    const next=(attempts?.attempts||0)+1;
+    await env.DB.prepare("UPDATE notifications SET attempts=?,next_attempt_at=?,status=?,last_error=? WHERE id=? AND status='sending'")
+     .bind(next,now()+Math.min(3600,60*2**next),next>=5?'failed':'pending',info,item.id).run();
    }
   }
+ }
+ // Release claimed notifications not sent because of per-alarm group cap.
+ const sentIds=new Set([...groups.values()].slice(0,20).flatMap(group=>group.map(item=>item.id)));
+ for(const item of claimed)if(!sentIds.has(item.id)){
+  await env.DB.prepare("UPDATE notifications SET status='pending',next_attempt_at=? WHERE id=? AND status='sending'").bind(now(),item.id).run();
  }
  return count;
 }
