@@ -121,7 +121,7 @@ function App(){
  const [threshold,setThreshold]=useState(0);
  const [frequency,setFrequency]=useState('instant');
  const [kinds,setKinds]=useState<string[]>(['price.decreased','price.increased','image.price_decreased','image.price_increased','model.added','model.removed','model.restored','endpoint.added','endpoint.removed','endpoint.restored']);
- const [status,setStatus]=useState<{status:string;catalog_last_success:number|null;provider_total?:number;provider_scanned?:number;provider_due?:number;provider_errors?:number}>({status:'degraded',catalog_last_success:null});
+ const [status,setStatus]=useState<{status:string;catalog_last_success:number|null;provider_total?:number;provider_scanned?:number;provider_due?:number;provider_errors?:number;provider_recent?:number}>({status:'degraded',catalog_last_success:null});
 
  async function loadPublic(){
   const results=await Promise.allSettled([api<typeof stats>('/stats'),api<{data:Event[]}>('/events?limit=40'),fetch('/api/health',{credentials:'same-origin'}).then(r=>r.json() as Promise<typeof status>)]);
@@ -334,6 +334,7 @@ function App(){
        <div className="scanner-meta"><span>{"Provider 快照覆盖"}</span><strong>{progress}%</strong></div>
        <div className="scanner-divider"/>
        <div className="scanner-row"><span>目录同步状态</span><strong className={status.status==='ok'?'good':'warning'}>{status.status==='ok'?'正常':'待确认'}</strong></div>
+       <div className="scanner-row"><span>{"最近一小时成功扫描"}</span><strong>{(status.provider_recent??0).toLocaleString()} 个</strong></div>
        <div className="scanner-row"><span>{"等待扫描"}</span><strong>{(status.provider_due??0).toLocaleString()} 个</strong></div>
        <div className="scanner-row"><span>{"上次目录同步"}</span><strong>{status.catalog_last_success?time(status.catalog_last_success):'暂无'}</strong></div>
        <p className="scanner-footnote">{"每小时全量同步，按批次抓取 Provider。订阅只影响提醒，不影响采集。"}</p>

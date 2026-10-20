@@ -234,7 +234,9 @@ export async function collectModel(env:Bindings,modelId:string,fetcher:typeof li
    const slug=typeof rawSlug==='string'&&rawSlug?rawSlug:provider;
    const baseKey=stableEndpointKey(slug,tag);
    const ordinal=ordinals.get(baseKey)||0;ordinals.set(baseKey,ordinal+1);
-   const suffix=counts.get(baseKey)!>1?JSON.stringify(['variant',String('name' in item?item.name||'':''),String('quantization' in item?item.quantization||'':''),ordinal]):'';
+   const suffix=(counts.get(baseKey)||0)>1?JSON.stringify(['variant',
+    String('name' in item?item.name||'':''),String('quantization' in item?item.quantization||'':''),
+    String('service_tier' in item?item.service_tier||'':''),ordinal]):'';
    const key=baseKey+suffix;
    // Legacy database keys can include quantization/tier/name. Reuse their IDs
    // to retain historical events and price points rather than rekeying FKs.
