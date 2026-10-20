@@ -117,3 +117,46 @@ for(const width of [390,1440]){
   });
  });
 }
+
+
+for(const width of [375,390]){
+ test.describe('actual touch emulation '+width+'px',()=>{
+  test.use({viewport:{width,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2});
+  test('touch nav, model detail deep-link and dark details',async({page})=>{
+   const errors:string[]=[];
+   page.on('pageerror',e=>errors.push(e.message));
+   await goto(page);
+   const nav=page.getByRole('navigation',{name:'主要导航'});
+   const navDimensions=await nav.evaluate(el=>({content:el.scrollWidth,visible:el.clientWidth}));
+   if(!baseline)expect(navDimensions.content).toBeGreaterThan(navDimensions.visible);
+   await nav.getByRole('button',{name:'通知'}).tap();
+   await expect(page.getByRole('heading',{name:'通知中心'})).toBeVisible();
+   await nav.getByRole('button',{name:'Models'}).tap();
+   await page.locator('.model-main').filter({hasText:'GPT 5.6'}).tap();
+   await expect(page.locator('.detail-panel')).toContainText(MODEL_ID);
+   await page.waitForTimeout(250);
+   const position=await page.locator('.detail-panel').evaluate(el=>el.getBoundingClientRect().top);
+   if(!baseline)expect(position,'Mobile selection should scroll model details close to the top').toBeLessThan(180);
+   await capture(page,`${width}/touch-detail.png`);
+   await page.getByRole('button',{name:'切换深色/浅色主题'}).tap();
+   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+   await checkDocument(page,width);
+   await capture(page,`${width}/touch-detail-dark.png`);
+   if(!baseline)expect(errors,'Uncaught mobile browser errors').toEqual([]);
+  });
+ });
+}
+test.describe('keyboard navigation 1440px',()=>{
+ test.use({viewport:{width:1440,height:900}});
+ test('slash focus, escape blur and tab order',async({page})=>{
+  await goto(page);
+  await page.keyboard.press('/');
+  const search=page.getByRole('textbox',{name:'搜索模型名称或 ID'});
+  await expect(search).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(search).not.toBeFocused();
+  await page.keyboard.press('Tab');
+  const focused=await page.evaluate(()=>document.activeElement?.tagName);
+  if(!baseline)expect(['BUTTON','INPUT','A']).toContain(focused);
+ });
+});
