@@ -51,3 +51,31 @@ export async function listEndpoints(modelId:string,apiKey:string):Promise<Upstre
   .parse(await request('/api/v1/models/'+path+'/endpoints',apiKey));
  return result.data.endpoints;
 }
+
+/** Dedicated image-generation catalogue and endpoint APIs have a different shape. */
+export const imageModelSchema=z.object({
+ id:z.string().min(3),name:z.string().min(1),
+ description:z.string().nullish(),
+ architecture:z.record(z.string(),z.unknown()).nullish()
+}).passthrough();
+export const imageEndpointSchema=z.object({
+ provider_name:z.string().min(1),
+ provider_slug:z.string().optional(),
+ provider_tag:z.string().optional(),
+ pricing:z.array(z.record(z.string(),z.unknown()))
+}).passthrough();
+export type UpstreamImageEndpoint=z.infer<typeof imageEndpointSchema>;
+export async function listImageModels(apiKey:string):Promise<UpstreamModel[]>{
+ const data=z.object({data:z.array(imageModelSchema)}).parse(await request('/api/v1/images/models',apiKey)).data;
+ return data.map(m=>({id:m.id,name:m.name,description:m.description,architecture:m.architecture,
+  // Image-specific supported_parameters is a complex object, not the text API's string[].
+  supported_parameters:null,pricing:{}}));
+}
+export async function listImageEndpoints(modelId:string,apiKey:string):Promise<UpstreamImageEndpoint[]>{
+ const [author,...rest]=modelId.split('/');
+ if(!author||!rest.length||rest.some(x=>!x))throw new Error('Invalid image model ID');
+ const path=[author,...rest].map(encodeURIComponent).join('/');
+ const data=z.object({endpoints:z.array(imageEndpointSchema)})
+  .parse(await request('/api/v1/images/models/'+path+'/endpoints',apiKey));
+ return data.endpoints;
+}
