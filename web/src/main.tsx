@@ -3,6 +3,7 @@ import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pag
 import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,Sun,UserRound,X} from 'lucide-react';
 import {useDebouncedValue} from '@mantine/hooks';
 import '@mantine/core/styles.css';
+import '@mantine/charts/styles.css';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 import './router-inspired.css';
