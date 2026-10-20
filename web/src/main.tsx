@@ -2,11 +2,14 @@ import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 import './router-inspired.css';
+import './monitoring.css';
+import {PriceHistory,CompareModels} from './monitoring';
 
 type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number};
 type ProviderOption={provider:string;model_count:number};
-type Endpoint={id:string;provider:string;tag:string;source:string;input_price:string|null;output_price:string|null;status:string;checked_at:number};
-type Watch={id:string;model_id:string;name:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string};
+type Endpoint={id:string;provider:string;tag:string;source:string;input_price:string|null;output_price:string|null;status:string;checked_at:number;pricing_json:string};
+type Collection={status:string;last_attempt:number|null;last_success:number|null;last_error:string|null;age_seconds:number|null;active_endpoints:number;missing_endpoints:number};
+type Watch={id:string;model_id:string;name:string;provider:string|null;events_json:string;threshold_pct:number;frequency:string;paused:number;last_hit:number|null;last_sent:number|null;latest_status:string|null};
 type Event={id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;change_pct:number|null;created_at:number};
 type Notice=Event&{id:string;status:string;read_at:number|null;sent_at:number|null;created_at:number};
 const EVENTS=[
@@ -49,21 +52,33 @@ function App(){
  const [providers,setProviders]=useState<ProviderOption[]>([]);
  const [providerFilter,setProviderFilter]=useState('');
  const [sort,setSort]=useState('name');
+ const [authorFilter,setAuthorFilter]=useState('');
+ const [modalityFilter,setModalityFilter]=useState('');
+ const [capabilityFilter,setCapabilityFilter]=useState('');
+ const [minContext,setMinContext]=useState('');
+ const [maxInput,setMaxInput]=useState('');
+ const [compareIds,setCompareIds]=useState<string[]>([]);
  const catalogSearch=useRef<HTMLInputElement>(null);
  const [events,setEvents]=useState<Event[]>([]);
  const [recentEvents,setRecentEvents]=useState<Event[]>([]);
  const [modelEvents,setModelEvents]=useState<Event[]>([]);
  const [eventSearch,setEventSearch]=useState('');
  const [eventKind,setEventKind]=useState('');
+ const [eventProvider,setEventProvider]=useState('');
+ const [eventStart,setEventStart]=useState('');
+ const [eventEnd,setEventEnd]=useState('');
  const [eventPage,setEventPage]=useState(1);
  const [eventTotal,setEventTotal]=useState(0);
  const [loadingEvents,setLoadingEvents]=useState(false);
  const [watches,setWatches]=useState<Watch[]>([]);
+ const [editingWatch,setEditingWatch]=useState<string|null>(null);
+ const [watchDraft,setWatchDraft]=useState<{provider:string;threshold_pct:number;frequency:string;events:string[]}>({provider:'',threshold_pct:0,frequency:'instant',events:[]});
  const [notices,setNotices]=useState<Notice[]>([]);
  const [search,setSearch]=useState('');
  const [page,setPage]=useState(1);
  const [selected,setSelected]=useState<Model|null>(null);
  const [endpoints,setEndpoints]=useState<Endpoint[]>([]);
+ const [collection,setCollection]=useState<Collection|null>(null);
  const [watchProvider,setWatchProvider]=useState('');
  const [threshold,setThreshold]=useState(0);
  const [frequency,setFrequency]=useState('instant');
@@ -81,32 +96,35 @@ function App(){
   if(results[0].status==='fulfilled')setWatches(results[0].value.data);
   if(results[1].status==='fulfilled')setNotices(results[1].value.data);
  }
- async function loadModels(q:string,p:number,provider:string,order:string){
+ async function loadModels(q:string,p:number,provider:string,order:string,author:string,modality:string,capability:string,context:string,maxPrice:string){
   setModelLoading(true);
   try{
-   const params=new URLSearchParams({q,page:String(p),limit:'30',provider,sort:order});
+   const params=new URLSearchParams({q,page:String(p),limit:'30',provider,sort:order,author,modality,capability,min_context:context});
+   if(maxPrice.trim())params.set('max_input_price',maxPrice);
    const r=await api<{data:Model[];total:number}>('/models?'+params.toString());
    setModels(r.data);setModelTotal(r.total);
   }catch(e){setError((e as Error).message);}finally{setModelLoading(false);}
  }
- async function loadEvents(q:string,kind:string,p:number){
+ async function loadEvents(q:string,kind:string,p:number,provider:string,start:string,end:string){
   setLoadingEvents(true);
   try{
-   const params=new URLSearchParams({q,kind,page:String(p),limit:'30'});
+   const params=new URLSearchParams({q,kind,page:String(p),limit:'30',provider});
+   if(start)params.set('start',String(Math.floor(new Date(start+'T00:00:00').getTime()/1000)));
+   if(end)params.set('end',String(Math.floor(new Date(end+'T23:59:59').getTime()/1000)));
    const r=await api<{data:Event[];total:number}>('/events?'+params.toString());
    setEvents(r.data);setEventTotal(r.total);
   }catch(e){setError((e as Error).message);}finally{setLoadingEvents(false);}
  }
  async function inspect(model:Model){
   setSelected(model);setView('catalog');setWatchProvider('');setThreshold(0);setFrequency('instant');
-  setEndpoints([]);setModelEvents([]);
+  setEndpoints([]);setModelEvents([]);setCollection(null);
   history.replaceState(null,'','#model='+encodeURIComponent(model.id));
   try{
    const [details,changes]=await Promise.all([
-    api<{model:Model;endpoints:Endpoint[]}>('/model?id='+encodeURIComponent(model.id)),
+    api<{model:Model;endpoints:Endpoint[];collection:Collection}>('/model?id='+encodeURIComponent(model.id)),
     api<{data:Event[]}>('/events?model_id='+encodeURIComponent(model.id)+'&limit=8')
    ]);
-   setSelected(details.model);setEndpoints(details.endpoints);setModelEvents(changes.data);
+   setSelected(details.model);setEndpoints(details.endpoints);setCollection(details.collection);setModelEvents(changes.data);
   }catch(e){setError((e as Error).message);}
  }
  useEffect(()=>{
@@ -122,8 +140,8 @@ function App(){
   void loadPublic();
  },[]);
  useEffect(()=>{if(user)void loadPrivate();},[user]);
- useEffect(()=>{void loadModels(search,page,providerFilter,sort);},[search,page,providerFilter,sort]);
- useEffect(()=>{void loadEvents(eventSearch,eventKind,eventPage);},[eventSearch,eventKind,eventPage]);
+ useEffect(()=>{void loadModels(search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput);},[search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput]);
+ useEffect(()=>{void loadEvents(eventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd);},[eventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd]);
  useEffect(()=>{
   const onKey=(event:KeyboardEvent)=>{
    const el=event.target as HTMLElement;
@@ -160,6 +178,36 @@ function App(){
    await api('/subscriptions',{method:'POST',body:JSON.stringify({model_id:selected.id,provider:watchProvider||null,events:kinds,threshold_pct:Number(threshold),frequency})});
    setMessage('订阅创建成功，后续符合条件的变化将通知你。');await loadPrivate();setView('watches');
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}
+ }
+ function startEditWatch(w:Watch){
+  setEditingWatch(w.id);
+  setWatchDraft({provider:w.provider||'',frequency:w.frequency,threshold_pct:w.threshold_pct,events:JSON.parse(w.events_json) as string[]});
+ }
+ async function saveWatch(id:string){
+  if(!watchDraft.events.length){setError('至少选择一个提醒事件');return;}
+  setBusy(true);
+  try{
+   await api('/subscriptions/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({
+    provider:watchDraft.provider||null,frequency:watchDraft.frequency,threshold_pct:watchDraft.threshold_pct,events:watchDraft.events
+   })});
+   await loadPrivate();setEditingWatch(null);setMessage('订阅已更新');
+  }catch(e){setError((e as Error).message);}finally{setBusy(false);}
+ }
+ async function togglePaused(w:Watch){
+  try{
+   await api('/subscriptions/'+encodeURIComponent(w.id),{method:'PATCH',body:JSON.stringify({paused:!w.paused})});
+   await loadPrivate();setMessage(w.paused?'已恢复订阅':'已暂停订阅，未发送的提醒已取消');
+  }catch(e){setError((e as Error).message);}
+ }
+ function toggleCompare(id:string){
+  setCompareIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):prev.length<3?[...prev,id]:prev);
+  if(compareIds.length===3&&!compareIds.includes(id))setMessage('最多比较 3 个模型');
+ }
+ function exportUrl(format:'csv'|'json'){
+  const params=new URLSearchParams({format,q:eventSearch,kind:eventKind,provider:eventProvider});
+  if(eventStart)params.set('start',String(Math.floor(new Date(eventStart+'T00:00:00').getTime()/1000)));
+  if(eventEnd)params.set('end',String(Math.floor(new Date(eventEnd+'T23:59:59').getTime()/1000)));
+  return '/api/events/export?'+params.toString();
  }
  async function removeWatch(id:string){
   if(!confirm('确定取消这条监控订阅吗？'))return;
