@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Bindings } from './types';
 import { runCollection } from './collector';
 import { deliverPending } from './delivery';
+import { deliverChannels } from './channels';
 
 /**
  * Single periodic scanner without account-level Cron Triggers.
@@ -38,6 +39,7 @@ export class RadarScheduler extends DurableObject<Bindings> {
   try {
    await runCollection(this.env);
    await deliverPending(this.env);
+   await deliverChannels(this.env);
   } catch (error) {
    console.error('Radar scheduler failed, will retry on next alarm',error);
   }
