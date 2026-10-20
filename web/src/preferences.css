@@ -1,0 +1,40 @@
+/* Preference-controlled theme; no external stylesheets or fonts. */
+html[data-theme="dark"]{
+ color-scheme:dark;
+ --radar-bg:#15141a;--radar-topbar:#18171d;--radar-sidebar:#18171d;
+ --radar-surface:#201e26;--radar-surface-soft:#25222c;
+ --radar-text:#f2f0f6;--radar-text-muted:#bab5c5;--radar-text-tertiary:#a49fab;
+ --radar-input-text:#eeeaf3;--radar-border:#3a3641;
+ --radar-input-border:#545060;--radar-accent:#b59aef;--radar-accent-strong:#c3b0ff;
+ --radar-primary-start:#6c4ba5;--radar-primary-end:#6c4ba5;--radar-primary-border:#8464c1;
+ --radar-success:#56cf9c;--radar-warning:#e2b46d;--radar-danger:#ef8e9b;
+}
+html[data-theme="dark"] body,html[data-theme="dark"] .layout,html[data-theme="dark"] .main,html[data-theme="dark"] .content{background:var(--radar-bg);color:var(--radar-text)}
+html[data-theme="dark"] .sidebar,html[data-theme="dark"] .topbar,html[data-theme="dark"] .panel,
+html[data-theme="dark"] .metric,html[data-theme="dark"] .model-item,
+html[data-theme="dark"] .models-panel,html[data-theme="dark"] .detail-panel,
+html[data-theme="dark"] .filter-panel{background:var(--radar-surface);color:var(--radar-text)}
+html[data-theme="dark"] .hero,html[data-theme="dark"] .hero h1{color:var(--radar-text)}
+html[data-theme="dark"] .brand b,html[data-theme="dark"] .page-heading h1,html[data-theme="dark"] .section-head h2,html[data-theme="dark"] .metric strong,
+html[data-theme="dark"] .detail-panel h2,html[data-theme="dark"] .model-item strong,html[data-theme="dark"] .panel td strong{color:var(--radar-text)}
+html[data-theme="dark"] .nav-link,html[data-theme="dark"] .account-button{background:transparent;color:var(--radar-text-muted)}
+html[data-theme="dark"] .nav-link.active{background:#3f3454;color:#f0eaff}
+html[data-theme="dark"] .nav-link:hover,html[data-theme="dark"] .model-item:hover,
+html[data-theme="dark"] .model-item.chosen{background:#312b3b}
+html[data-theme="dark"] .panel th,html[data-theme="dark"] .compare-panel th{background:#292630;color:#c5bfcb}
+html[data-theme="dark"] .panel td{border-color:#37323d}
+html[data-theme="dark"] .hero p,html[data-theme="dark"] .page-heading p,html[data-theme="dark"] .section-heading-sub{color:var(--radar-text-muted)}
+html[data-theme="dark"] .history-chart,html[data-theme="dark"] .compare-panel,html[data-theme="dark"] .collection-summary,
+html[data-theme="dark"] .watch-card,html[data-theme="dark"] .subscribe-box,html[data-theme="dark"] .raw-pricing{background:var(--radar-surface-soft);border-color:var(--radar-border);color:var(--radar-text)}
+html[data-theme="dark"] .history-caption,html[data-theme="dark"] .monitor-head p,html[data-theme="dark"] .compare-header p{color:var(--radar-text-muted)}
+html[data-theme="dark"] input:not([type="checkbox"]),html[data-theme="dark"] select{background:#25232c;color:var(--radar-text);border-color:var(--radar-input-border)}
+html[data-theme="dark"] .primary,html[data-theme="dark"] .hero .primary{background:#7f61b7;color:white;border-color:#7f61b7}
+html[data-theme="dark"] .sort-field,html[data-theme="dark"] .filter-panel label{color:var(--radar-text-muted)}
+html[data-theme="dark"] .model-price,html[data-theme="dark"] .provider-name,html[data-theme="dark"] .detail-facts strong{color:var(--radar-text)}
+html[data-theme="dark"] .search-field kbd,html[data-theme="dark"] .model-avatar{background:#373044;color:#dbcff1;border-color:#544963}
+html[data-theme="dark"] .model-count{background:#302b38;border-color:#4b4552;color:#cdc5d7}
+html[data-theme="dark"] .watch-actions button,html[data-theme="dark"] .event-export-bar a{background:#292530;color:#d2bbfa;border-color:#4c415e}
+.preference-controls{display:flex;align-items:center;gap:6px}
+.preference-controls button{border:1px solid var(--radar-border);border-radius:7px;padding:6px 9px;font-size:11px;background:var(--radar-surface);color:var(--radar-text-muted);min-height:30px}
+.preference-controls button:hover{border-color:var(--radar-accent);color:var(--radar-text)}
+@media(max-width:640px){.preference-controls{gap:3px}.preference-controls button{padding:6px}.topbar-actions .account-button{max-width:103px}}
