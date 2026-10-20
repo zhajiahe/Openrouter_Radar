@@ -150,7 +150,7 @@ app.get('/api/price-history',async c=>{
  const args=image?[modelId,source,provider,provider,since,modelId,source,provider,provider,since,since]
   :[modelId,source,provider,provider,value,since,modelId,source,provider,provider,value,since,since];
  const rows=await c.env.DB.prepare(sql).bind(...args).all();
- return c.json({data:rows.results,unit:image?'mixed':units.find(x=>x.dimension===dimension)?.unit,method:'observed_baseline_and_change_points',retention_days:180,window_start:since});
+ return c.json({data:rows.results,unit:image?'mixed':units.find(x=>x.dimension===dimension)?.unit,method:'observed_baseline_and_change_points',retention_days:180,window_start:since,dimensions:image?[]:units});
 });
 app.get('/api/events',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);

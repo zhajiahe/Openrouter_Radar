@@ -60,3 +60,6 @@ html[data-theme="dark"]{
  .chart-panel,.historic-card{padding:15px 12px}
  .historic-controls>.mantine-SegmentedControl-root{width:100%}
 }
+
+.chart-dimensions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+.chart-dimensions span{border:1px solid var(--border-default,var(--border));border-radius:999px;padding:4px 9px;font-size:12px;color:var(--text-secondary,var(--muted))}

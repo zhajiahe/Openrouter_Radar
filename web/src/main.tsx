@@ -28,6 +28,13 @@ const label=(kind:string)=>EVENTS.find(e=>e[0]===kind)?.[1]||kind;
 const time=(ts:number)=>new Date(ts*1000).toLocaleString();
 const million=(price:string|null)=>price===null?'—':'$'+(Number(price)*1e6).toLocaleString(undefined,{maximumFractionDigits:5});
 const endpointPrice=(price:string|null)=>million(price);
+const extraPrice=(ep:Endpoint,field:string)=>{
+ if(ep.pricing_json.includes('image_pricing'))return '—';
+ try{
+  const raw=(JSON.parse(ep.pricing_json) as Record<string,unknown>)[field];
+  return (typeof raw==='string'||typeof raw==='number')&&Number.isFinite(Number(raw))&&Number(raw)>=0?million(String(raw)):'—';
+ }catch{return '—';}
+};
 const formatEvent=(e:Event):string=>{
  if(e.kind==='model.expiring')return '上游预计到期：进入 '+(e.new_price||'?')+' 天提醒窗口（不等于下架）';
  if(e.kind.startsWith('image.price_'))return (e.dimension||'图片计费项目')+'：'+(e.old_price??'未提供')+' → '+(e.new_price??'未提供')+' USD / 指定单位';
@@ -386,8 +393,8 @@ function App(){
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
        <div className="detail-section-head"><h3>Provider 报价</h3><small>{selected.model_kind==='image'?'图片计费单位各异，详见原始规则':'USD / 百万 Token · 最新成功采集'}</small></div>
-       <div className="mobile-table-hint">向左滑动查看完整报价与检查时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col">检查时间</th></tr></thead><tbody>
-        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
+       <div className="mobile-table-hint">向左滑动查看完整报价与检查时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col" className="num">Cache Read</th><th scope="col" className="num">Cache Write</th><th scope="col" className="num">Write 1h</th><th scope="col">检查时间</th></tr></thead><tbody>
+        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="num">{extraPrice(ep,'input_cache_read')}</td><td className="num">{extraPrice(ep,'input_cache_write')}</td><td className="num">{extraPrice(ep,'input_cache_write_1h')}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
        </tbody></Table>{!providerEndpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
        <PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>

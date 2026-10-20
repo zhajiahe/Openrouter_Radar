@@ -36,6 +36,9 @@ export function CompareModels({ids,onRemove,onClose}:{ids:string[];onRemove:(id:
     {providers.map(provider=><React.Fragment key={provider}>
      <tr><td><Badge size="xs" color="gray" variant="light">{provider}</Badge> 输入</td>{ids.map(id=><td className="num" key={id}>{price(models.find(m=>m.model.id===id),provider,'input_price')}</td>)}</tr>
      <tr><td>{provider} 输出</td>{ids.map(id=><td className="num" key={id}>{price(models.find(m=>m.model.id===id),provider,'output_price')}</td>)}</tr>
+     {(['input_cache_read','input_cache_write','input_cache_write_1h'] as const).map(field=>
+      <tr key={field}><td>{provider} · {field==='input_cache_read'?'缓存读取':field==='input_cache_write'?'缓存写入':'缓存写入 1h'}</td>
+       {ids.map(id=><td className="num" key={id}>{extra(models.find(m=>m.model.id===id),provider,field)}</td>)}</tr>)}
     </React.Fragment>)}
    </tbody></Table>
    {!providers.length&&<div className="empty">暂无可比较的有效 Provider 报价。</div>}
@@ -47,5 +50,18 @@ function price(model:CompareData|undefined,provider:string,dim:'input_price'|'ou
  if(!model||model.model.model_kind==='image')return '—';
  const nums=model.endpoints.filter(e=>e.provider===provider&&e.source==='provider'&&e.status==='active'&&!e.pricing_json?.includes('image_pricing')&&e[dim]!==null)
   .map(e=>Number(e[dim])*1e6).filter(n=>Number.isFinite(n)&&n>=0);
+ return nums.length?fmt(Math.min(...nums)):'—';
+}
+
+function extra(model:CompareData|undefined,provider:string,field:string){
+ if(!model||model.model.model_kind==='image')return '—';
+ const nums=model.endpoints.filter(e=>e.provider===provider&&e.source==='provider'&&e.status==='active'&&!e.pricing_json?.includes('image_pricing'))
+  .flatMap(e=>{
+   try{
+    const raw=(JSON.parse(e.pricing_json||'{}') as Record<string,unknown>)[field];
+    const n=Number(raw);
+    return raw!==null&&raw!==undefined&&Number.isFinite(n)&&n>=0?[n*1e6]:[];
+   }catch{return [];}
+  });
  return nums.length?fmt(Math.min(...nums)):'—';
 }
