@@ -123,9 +123,20 @@ app.get('/api/price-history',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
  const provider=(c.req.query('provider')||'').slice(0,150);
  const dimension=c.req.query('dimension')==='output'?'output':'input';
+ const image=c.req.query('mode')==='image';
  if(!modelId)return c.json({error:'model_id is required'},400);
- const since=Math.max(0,Number(c.req.query('since'))||now()-90*86400);
- const rows=await c.env.DB.prepare("SELECT endpoint_id,model_id,provider,source,dimension,price,observed_at FROM price_history WHERE model_id=? AND source='provider' AND (?='' OR provider=?) AND dimension=? AND observed_at>=? ORDER BY observed_at ASC,provider ASC LIMIT 2000").bind(modelId,provider,provider,dimension,since).all();
+ const requested=Number(c.req.query('since'));
+ const oldest=now()-180*86400;
+ const since=Number.isFinite(requested)&&requested>0?Math.min(now(),Math.max(oldest,requested)):now()-90*86400;
+ if(image){
+  // Image tariffs use their own unit-qualified dimension; never mix them with USD/token.
+  // Historical image prices are available only after an actual change event was seen.
+  const rows=await c.env.DB.prepare("SELECT pe.endpoint_id,pe.model_id,pe.provider,ep.tag,pe.dimension,pe.new_price AS price,pe.created_at AS observed_at FROM price_events pe LEFT JOIN endpoints ep ON ep.id=pe.endpoint_id WHERE pe.model_id=? AND (?='' OR pe.provider=?) AND pe.kind IN ('image.price_increased','image.price_decreased') AND pe.quality='observed' AND pe.new_price IS NOT NULL AND pe.created_at>=? ORDER BY pe.created_at ASC,pe.provider ASC LIMIT 2000")
+   .bind(modelId,provider,provider,since).all();
+  return c.json({data:rows.results,unit:'USD per image billing item',method:'observed_price_change_events',retention_days:180});
+ }
+ const rows=await c.env.DB.prepare("SELECT h.endpoint_id,h.model_id,h.provider,ep.tag,h.source,h.dimension,h.price,h.observed_at FROM price_history h LEFT JOIN endpoints ep ON ep.id=h.endpoint_id WHERE h.model_id=? AND h.source='provider' AND (?='' OR h.provider=?) AND h.dimension=? AND h.observed_at>=? ORDER BY h.observed_at ASC,h.provider ASC LIMIT 2000")
+  .bind(modelId,provider,provider,dimension,since).all();
  return c.json({data:rows.results,unit:'USD/token',method:'observed_change_points',retention_days:180});
 });
 app.get('/api/events',async c=>{
