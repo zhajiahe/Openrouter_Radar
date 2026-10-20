@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Bindings } from './types';
-import { runCollection } from './collector';
+import { runCollection, runHousekeeping } from './collector';
 import { deliverPending } from './delivery';
 
 /**
@@ -37,6 +37,13 @@ export class RadarScheduler extends DurableObject<Bindings> {
   await this.ctx.storage.setAlarm(Date.now()+ALARM_INTERVAL_MS);
   try {
    await runCollection(this.env);
+   // DO storage (not D1) tracks completion and retries on the next alarm
+   // when housekeeping fails. The UTC-day boundary matches D1 quotas.
+   const day=Math.floor(Date.now()/86_400_000);
+   if((await this.ctx.storage.get<number>('housekeepingDay'))!==day){
+    await runHousekeeping(this.env);
+    await this.ctx.storage.put('housekeepingDay',day);
+   }
    await deliverPending(this.env);
   } catch (error) {
    console.error('Radar scheduler failed, will retry on next alarm',error);
