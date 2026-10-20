@@ -4,7 +4,7 @@
 
 **网站：** [访问在线网站](https://openrouter-radar.zhajiahe1994.workers.dev) · [健康状态](https://openrouter-radar.zhajiahe1994.workers.dev/api/health) · [源代码](https://github.com/zhajiahe/Openrouter_Radar)
 
-[UI 设计规范](docs/ui-design.md) · [产品 / UX 审计](docs/product-ux-audit.md) · [贡献指南](CONTRIBUTING.md) · [English](#english) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
+[UI 设计规范](docs/ui-design.md) · [产品 / UX 审计](docs/product-ux-audit.md) · [可选通知渠道](docs/notification-channels.md) · [贡献指南](CONTRIBUTING.md) · [English](#english) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
 
 **后端：Hono + TypeScript + Cloudflare Workers + D1 + Durable Objects。前端：React + Vite。** UI 采用 OpenRouter 式紧凑模型目录与筛选信息架构，但保留独立品牌和原创样式。
 
@@ -21,6 +21,15 @@
 全量模型和 Provider 数据独立于订阅持续采集、生成历史变更事件；订阅只负责筛选事件和发送站内/邮件通知。全站用户共享一套上游数据采集。**任意用户都不需要在 Web UI 填写任何 Key**；运营者在 Cloudflare Secrets 中配置自己的 OpenRouter API Key 和邮件发送凭证。
 
 **实例说明：** 当前公开站点可查看模型目录与历史事件；账号注册及邮件提醒取决于部署者是否启用邮件服务与开放注册。网站是自部署实例，非 OpenRouter 官方服务。
+
+## 新增的监控体验
+
+- 支持模型作者、模态、能力、上下文、最大输入价和 Provider 筛选；对比至多 3 个模型的基础报价（无虚构性能评分）。
+- 公开的价格采样历史只记录首次观察与实际变价，并提供模型级采集成功/失败、时效及价格原始计费细节。历史保留 180 天，从首次采集开始。
+- 变更历史支持日期和 Provider 筛选、CSV/JSON 导出（每次至多 1000 条）及 RSS 分页。
+- 订阅可编辑、暂停/恢复；支持独立的发送失败统计、重试和邮件幂等键。
+- 浏览器支持浅色/深色模式、中文/英文偏好（部分技术领域的文案保留原始术语）。
+- Telegram 与签名 Webhook 为**可选、默认关闭**的附加通知渠道；启用方法和 SSRF 防护要求见 [通知渠道指南](docs/notification-channels.md)。
 
 ## 快速部署
 
