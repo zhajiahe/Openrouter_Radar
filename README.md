@@ -4,7 +4,7 @@
 
 **网站：** [访问在线网站](https://openrouter-radar.zhajiahe1994.workers.dev) · [健康状态](https://openrouter-radar.zhajiahe1994.workers.dev/api/health) · [源代码](https://github.com/zhajiahe/Openrouter_Radar)
 
-[UI 设计规范](docs/ui-design.md) · [浏览器与移动端验收](docs/browser-qa.md) · [产品 / UX 审计](docs/product-ux-audit.md) · [监控事件能力审计](docs/monitoring-events-audit.md) · [贡献指南](CONTRIBUTING.md) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [Security](SECURITY.md)
+[UI 设计规范](docs/ui-design.md) · [浏览器与移动端验收](docs/browser-qa.md) · [产品 / UX 审计](docs/product-ux-audit.md) · [监控事件能力审计](docs/monitoring-events-audit.md) · [贡献指南](CONTRIBUTING.md) · [Deployment](docs/deployment.md) · [API](docs/api.md) · [D1 免费额度预算](docs/d1-budget.md) · [Security](SECURITY.md)
 
 **后端：Hono + TypeScript + Cloudflare Workers + D1 + Durable Objects。前端：React + Vite。** UI 采用 OpenRouter 式紧凑模型目录与筛选信息架构，但保留独立品牌和原创样式。
 
@@ -90,3 +90,9 @@ React UI -> Hono routes -> D1 (auth + models + endpoints + rules + events)
 - 图片模型保存每项图片收费基准及真实变价点；历史图采用阶梯线，窗口开始前的真实观察只以原始时间展示。
 - D1 升级使用 `0008_price_observations.sql`：复制既有 input/output 历史到可扩展多单位时间序列表，不改写历史时间。其他已有报价等待后续成功扫描才建立新的可信基准。
 - OpenRouter 模型目录查询显式选择全部输出模态，图表可按 Provider、价格维度及聚合报价查看；不引入计费网关。
+
+
+## Provider 价格稳定性与维度化事件
+- 模型详情支持按 7/30 天、价格维度比较该模型各 Provider 的**公开报价稳定性**，同时展示变价次数、上涨/下降、历史覆盖及采集新鲜度。无完整窗口基准或采集过期时不输出误导性高分。
+- 事件表、模型详情、站内通知、邮件和 RSS 使用「【输入价格】上涨」「【缓存写入（1h）价格】下降」等明确标题；事件编码和已有订阅语义不变。
+- **仅是价格稳定指标**，不能据此宣称 Provider 推理服务的可用率、延迟、吞吐或输出质量。真实服务质量需要独立的请求级监测数据源。

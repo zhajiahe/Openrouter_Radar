@@ -2,6 +2,7 @@
 const CACHE_SECONDS:Readonly<Record<string,number>>={
  '/api/models':120,
  '/api/model':120,
+ '/api/provider-stability':120,
  '/api/providers':300,
  '/api/stats':120,
  '/api/analytics':120,

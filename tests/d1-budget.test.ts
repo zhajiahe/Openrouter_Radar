@@ -10,6 +10,7 @@ const read=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8
 test('only anonymous public read endpoints are cacheable',()=>{
  assert.equal(publicCacheSeconds('/api/models'),120);
  assert.equal(publicCacheSeconds('/api/events'),60);
+ assert.equal(publicCacheSeconds('/api/provider-stability'),120);
  for(const route of ['/api/auth/me','/api/health','/api/subscriptions','/api/notifications','/api/events/export','/api/unknown'])
   assert.equal(publicCacheSeconds(route),0);
  const app=read('src/index.ts');
