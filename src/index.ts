@@ -38,7 +38,7 @@ app.get('/api/stats',async c=>{
   c.env.DB.prepare('SELECT count(*) n FROM models').first<{n:number}>(),
   c.env.DB.prepare("SELECT count(DISTINCT provider) n FROM endpoints WHERE source='provider' AND status='active'").first<{n:number}>(),
   c.env.DB.prepare('SELECT count(*) n FROM subscriptions').first<{n:number}>(),
-  c.env.DB.prepare('SELECT count(*) n FROM price_events WHERE quality='observed' AND created_at>?').bind(now()-86400).first<{n:number}>()
+  c.env.DB.prepare("SELECT count(*) n FROM price_events WHERE quality='observed' AND created_at>?").bind(now()-86400).first<{n:number}>()
  ]);
  return c.json({models:models?.n||0,providers:providers?.n||0,subscriptions:subscriptions?.n||0,events24h:events?.n||0});
 });
