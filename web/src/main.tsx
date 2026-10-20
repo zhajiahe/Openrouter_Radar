@@ -266,6 +266,9 @@ function App(){
  const scanned=status.provider_scanned??0;
  const total=status.provider_total??stats.models;
  const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
+ const providerEndpoints=endpoints.filter(ep=>ep.source==='provider').sort((a,b)=>Number(b.status==='active')-Number(a.status==='active')||a.provider.localeCompare(b.provider));
+ const observedInput=providerEndpoints.filter(ep=>ep.status==='active'&&!ep.pricing_json.includes('image_pricing')).map(ep=>ep.input_price===null?NaN:Number(ep.input_price)).filter(value=>Number.isFinite(value)&&value>=0);
+ const lowestInput=observedInput.length?Math.min(...observedInput):null;
  return <MantineProvider forceColorScheme={theme} theme={{primaryColor:"violet",defaultRadius:"md",fontFamily:"Inter, PingFang SC, Noto Sans SC, system-ui, sans-serif",respectReducedMotion:true}}><div className="layout">
   <aside className="sidebar">
    <div className="brand"><span className="brand-icon" aria-hidden="true"><Radar size={21}/></span><span>OpenRouter <b>Radar</b></span></div>
@@ -365,22 +368,27 @@ function App(){
       <div className="panel detail-panel" ref={detailRef}>{selected?<>
        <div className="panel-title"><span>模型详情</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}><Copy size={14} aria-hidden="true"/> 复制链接</button></div>
        <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code>{selected.lifecycle_status==='removed'&&<span className="event-tag">已确认下架 · 等待恢复</span>}{selected.model_kind==='image'&&<span className="event-tag">图片生成模型</span>}</div></div>
-       <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{collection?.active_endpoints??0}</strong> Active endpoints</span></div>
-       <div className={'collection-summary '+(collection?.status||'never')} role="status">
-        <strong>采集状态：{collection?.status==='fresh'?'近期成功':collection?.status==='error'?'采集失败':collection?.status==='stale'?'数据可能过期':'尚未成功采集'}</strong>
-        <span>上次成功：{collection?.last_success?time(collection.last_success):'无'} · 上次尝试：{collection?.last_attempt?time(collection.last_attempt):'无'}</span>
-        {collection?.last_error&&<small>{collection.last_error} · 已保留上次有效报价</small>}
-        {!!collection?.missing_endpoints&&<small>{collection.missing_endpoints} 个历史端点已标记下线</small>}
+       <div className="detail-quick-stats">
+        <div className="detail-quick-price"><span>{selected.model_kind==='image'?'图片计费':'最低公开输入价'}</span><strong>{selected.model_kind==='image'?'按计费项':lowestInput===null?'—':million(String(lowestInput))}</strong><small>{selected.model_kind==='image'?'单位请参阅报价明细':'USD / 1M tokens · 活跃端点'}</small></div>
+        <div><span>Context</span><strong>{selected.context_length?.toLocaleString()||'—'}</strong><small>Tokens</small></div>
+        <div><span>Provider 端点</span><strong>{collection?.active_endpoints??'—'}</strong><small>当前活跃</small></div>
+       </div>
+       <div className={'detail-health '+(collection?.status||'never')} role="status">
+        <Badge variant="light" size="sm" color={collection?.status==='fresh'?'teal':collection?.status==='error'?'red':collection?.status==='stale'?'yellow':'gray'}>{collection?.status==='fresh'?'近期采集成功':collection?.status==='error'?'采集失败':collection?.status==='stale'?'可能过期':'尚未成功采集'}</Badge>
+        <span>成功于 {collection?.last_success?time(collection.last_success):'暂无'}</span>
+        <span>最近尝试 {collection?.last_attempt?time(collection.last_attempt):'暂无'}</span>
+        {collection?.last_error&&<p>{collection.last_error} · 已保留有效历史报价</p>}
+        {!!collection?.missing_endpoints&&<p>{collection.missing_endpoints} 个历史端点已下线</p>}
        </div>
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
-       <div className="detail-section-head"><h3>Provider pricing</h3><small>USD / 1M tokens · 来自最近一次采集</small></div>
-       <div className="scroll-x"><table><thead><tr><th>Provider</th><th>Input</th><th>Output</th><th>检查时间</th></tr></thead><tbody>
-        {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.status==='superseded'?'已合并的旧端点':ep.tag||'Active'}</small></td><td className="num">{ep.pricing_json.includes('image_pricing')?'按图片独立计价':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'详见计费项目':endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
-       </tbody></table>{!endpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
+       <div className="detail-section-head"><h3>Provider 报价</h3><small>{selected.model_kind==='image'?'图片计费单位各异，详见原始规则':'USD / 百万 Token · 最新成功采集'}</small></div>
+       <div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col">检查时间</th></tr></thead><tbody>
+        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
+       </tbody></Table>{!providerEndpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
        <PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>
-       <div className="detail-section-head"><h3>Recent changes</h3><small>仅记录首次快照后的实际变化</small></div>
+       <div className="detail-section-head"><h3>最近变化</h3><small>仅记录基准建立后的实际变化</small></div>
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
         <label htmlFor="watch-provider">Provider</label>
@@ -458,8 +466,8 @@ function App(){
 }
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
- return <div className="panel table-panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
- {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td><span>{formatEvent(e)}</span></td><td><small>{time(e.created_at)}</small></td></tr>)}
- </tbody></table>{!data.length&&<div className="empty roomy">还没有价格变化事件。完成首次采集后，系统只记录后续真实变化。</div>}</div></div>;
+ return <div className="panel table-panel"><div className="scroll-x"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
+ {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'?'teal':e.kind==='price.increased'?'red':'gray'}>{label(e.kind)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell">{time(e.created_at)}</td></tr>)}
+ </tbody></Table>{!data.length&&<div className="empty roomy">还没有实际变化事件。首次采集只建立基准。</div>}</div></div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
