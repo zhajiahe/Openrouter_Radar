@@ -40,7 +40,7 @@ export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(
   const interval=window.setInterval(()=>void load(),60_000);
   return ()=>{cancelled=true;window.clearInterval(interval);};
  },[days,refreshToken]);
- const visibleData=visibleData?.days===days?data:null;
+ const visibleData=data?.days===days?data:null;
  const totalEvents=visibleData?.daily.reduce((sum,d)=>sum+d.total,0)??0;
  const priceEvents=visibleData?.daily.reduce((sum,d)=>sum+d.priceUp+d.priceDown,0)??0;
  const activeModels=visibleData?.modelKinds.reduce((sum,k)=>sum+k.count,0)??0;
