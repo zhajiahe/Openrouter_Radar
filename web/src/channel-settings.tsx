@@ -1,4 +1,5 @@
 import React,{useEffect,useState} from 'react';
+import './channel-settings.css';
 type Channels={
  available:{telegram:boolean;webhook:boolean};
  telegram:{enabled:boolean;chat_id:string|null;awaiting_confirmation:boolean};
