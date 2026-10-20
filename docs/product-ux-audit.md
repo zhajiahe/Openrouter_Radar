@@ -50,8 +50,7 @@
 
 - 深色模式及用户偏好持久化。
 - 模型作者、输入/输出模态、context、价格范围的进一步服务端过滤（前提是快照字段稳定完整）。
-- Webhook、Telegram 等额外通知渠道；先验证邮箱与 RSS 是否满足自用。
-- 多语言国际化：中文优先，导航目前保留部分 OpenRouter 惯用英文词，正式多语言需要完整词条系统。
+- 明确不开发 Telegram、Webhook 或英文国际化；仅使用邮件、站内提醒与 RSS。
 
 ## 明确不做
 
@@ -77,8 +76,6 @@
 
 本次实现视觉布局、目录服务端过滤/排序/分页、变更流过滤/分页、模型级最近变更和分享链接、11 种事件的渐进展开、首页 KPI 优先级修正。**P0 数据基础建设与 P1/P2 未列入当前 PR 的功能不能当成已完成。**
 
-## Implementation follow-up (2026-10)
+## 后续重点：监控事件，而不是通知渠道
 
-The core P0/P1 items are implemented in the monitoring-completeness PR: observed-only sparse history, freshness and error flags, optional pricing metadata inspection, Provider comparison, filtered exports, editable/pausable watches, notification idempotency and retry leases.
-
-P2 browser-local dark mode and a **partial bilingual UI glossary** are implemented. Telegram and signed Webhooks require operator opt-in; no destination is enabled by default. Comprehensive translation coverage, UI visual regression screenshots, and real-world delivery tests with live provider credentials remain operational validation items, not guaranteed by unit tests alone.
+详见 [11 类监控事件能力审计](monitoring-events-audit.md)：该报告结合生产 D1 的真实事件分布和 OpenRouter 官方 API，分析初始化噪声、折扣计价误判、模型上下架缺失、Provider 端点身份、图片模型定价差异，以及邮件通知归并。界面以中文为主；不再开发 Telegram / Webhook / 英文界面。

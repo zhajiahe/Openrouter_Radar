@@ -31,3 +31,20 @@ test('endpoint identities are stable and model-specific',async()=>{
  assert.equal(await endpointId('a/m','P','tag'),await endpointId('a/m','P','tag'));
  assert.notEqual(await endpointId('a/m','P','tag'),await endpointId('b/m','P','tag'));
 });
+
+test('discount changes do not generate upside/downside price alarms',()=>{
+ const previous=parsePrices({prompt:'0.000001',discount:0.45});
+ const current=parsePrices({prompt:'0.000001',discount:0});
+ const changes=findPriceChanges(previous,current);
+ assert.deepEqual(changes.map(x=>[x.kind,x.dimension,x.percent]),[['price.policy_changed','discount',null]]);
+});
+test('unknown numeric pricing fields remain policy changes until their billing semantics are known',()=>{
+ const changes=findPriceChanges(parsePrices({prompt:'0.000001',special_fee:'0.1'}),parsePrices({prompt:'0.000001',special_fee:'0.2'}));
+ assert.equal(changes.length,1);
+ assert.equal(changes[0].kind,'price.policy_changed');
+ assert.equal(changes[0].dimension,'special_fee');
+});
+test('non-numeric nested policy changes are not silently ignored',()=>{
+ const changes=findPriceChanges(parsePrices({prompt:'0.000001',tiers:{large:'0.9'}}),parsePrices({prompt:'0.000001',tiers:{large:'0.8'}}));
+ assert.deepEqual(changes.map(x=>[x.kind,x.dimension]),[['price.policy_changed','tiers']]);
+});

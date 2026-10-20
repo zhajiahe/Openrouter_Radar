@@ -51,6 +51,11 @@ export function modelDeltas(old:ModelState,current:ModelState):ModelDelta[]{
  ] as const;
  return dims.flatMap(([key,kind,dimension])=>{
   if(old[key]===current[key])return [];
+  // Migrated deployments may have placeholders ('{}' or null) rather than
+  // a previously observed value. Filling them is baseline enrichment,
+  // not evidence that OpenRouter just changed the model capability.
+  if(key==='capabilities_json'&&old[key]==='{}')return [];
+  if(key!=='capabilities_json'&&old[key]===null)return [];
   return [{kind,dimension,oldValue:old[key]===null?null:String(old[key]),newValue:current[key]===null?null:String(current[key])}];
  });
 }
