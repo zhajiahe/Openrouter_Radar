@@ -24,6 +24,15 @@ export const PROVIDER_INTERVAL_SECONDS=3600;
 export const DEFAULT_MODELS_PER_TICK=15;
 export const MAX_MODELS_PER_TICK=25;
 
+export function modelLifecycleTransition(status:string,misses:number,found:boolean):{
+ status:'active'|'removed';misses:number;event:'model.removed'|'model.restored'|null
+}{
+ if(found)return {status:'active',misses:0,event:status==='removed'?'model.restored':null};
+ if(status==='removed')return {status:'removed',misses,event:null};
+ const next=misses+1;
+ return {status:next>=2?'removed':'active',misses:next,event:next===2?'model.removed':null};
+}
+
 export function modelsPerTick(configured?:string):number{
  const value=Number(configured);
  return Number.isFinite(value)&&value>=1
@@ -79,7 +88,7 @@ async function syncCatalog(env:Bindings,kind:'standard'|'image',fetcher:typeof l
    stmts.push(...historyStatements(env,aggregate,m.id,MODEL_PROVIDER,'model',prices,old?storedPrices(old.pricing_json):null,current));
    const snap=crypto.randomUUID();
    if(old){
-    if(old.lifecycle_status==='removed')stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,'model.restored',null,null,null,null,current,snap));
+    if(modelLifecycleTransition(old.lifecycle_status,old.missing_count,true).event==='model.restored')stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,'model.restored',null,null,null,null,current,snap));
     for(const delta of modelDeltas(old,state))
      stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,current,snap));
     if(kind==='standard')for(const delta of findPriceChanges(storedPrices(old.pricing_json),prices))
@@ -94,10 +103,10 @@ async function syncCatalog(env:Bindings,kind:'standard'|'image',fetcher:typeof l
   stmts=[];
   for(const old of previous.values()){
    if(old.model_kind!==kind||seen.has(old.id)||old.lifecycle_status==='removed')continue;
-   const next=old.missing_count+1;
+   const next=modelLifecycleTransition(old.lifecycle_status,old.missing_count,false);
    stmts.push(env.DB.prepare('UPDATE models SET missing_count=?,lifecycle_status=? WHERE id=?')
-    .bind(next,next>=2?'removed':'active',old.id));
-   if(next===2){
+    .bind(next.misses,next.status,old.id));
+   if(next.event==='model.removed'){
     const aggregate=await endpointId(old.id,MODEL_PROVIDER,'__model__');
     stmts.push(event(env,aggregate,old.id,MODEL_PROVIDER,'model.removed',null,null,null,null,current));
    }
