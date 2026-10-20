@@ -47,3 +47,13 @@
 - 提交前运行 npm run check，并检查 GitHub Actions 中的 Worker dry-run / 部署 Smoke Test。
 
 详细功能取舍及下一步优先级见 [产品 UX 审计](product-ux-audit.md)。
+
+## 成熟组件优先（Mantine v8）
+
+- 新增交互控件优先使用 `@mantine/core`，包括 Button、Select、TextInput、NumberInput、Checkbox、Pagination、Alert、Modal、Loader；需要防抖时复用 `@mantine/hooks` 的 `useDebouncedValue`。
+- 原有页面布局、数据可视化可保留独立样式；不要为表单、弹窗、分页、消息框再重复造原生控件。UI 外观覆写集中在 `web/src/component-library.css`，不要在业务 TSX 中散落行内样式。
+- MantineProvider 通过当前用户主题偏好同步 `forceColorScheme`；组件颜色遵守语义（危险操作红色、成功状态绿色、主操作中性色或 violet），且确保暗色对比度。
+- 下拉框支持键盘、搜索和清除；空值必须显式映射为 API 所需的空字符串；过滤参数的服务器端语义和数据源单位不能因替换 UI 组件而改变。
+- 破坏性操作用 Modal 确认而不是 `window.confirm`；提交按钮呈现真实 `loading`；不能在请求仍失败时把对话框关闭当作成功。
+- 搜索需要防抖、忽略过期响应；移动端点选模型后应能直接到达详情；所有交互须尊重 reduced motion。
+- 跨页面 UI 组件以同等密度为准：控件高度约 42px，键盘 focus-visible 明确、分隔线低对比、正文和标签不低于 12px（特殊时间/辅助文本除外）。
