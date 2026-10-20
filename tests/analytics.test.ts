@@ -36,7 +36,7 @@ test('zero and invalid counts do not create fabricated analytics', () => {
  const data = buildDailyAnalytics([
   {day:'2026-10-20',kind:'price.increased',count:0},
   {day:'2026-10-20',kind:'price.increased',count:-1},
-  {day:'2026-10-19',kind:'price.increased',count:5}
+  {day:'2026-10-13',kind:'price.increased',count:5}
  ], from, 7);
  assert.equal(data[6].total, 0);
  assert.ok(data.every(day => day.total === 0));
