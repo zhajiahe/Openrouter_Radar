@@ -114,10 +114,13 @@ app.get('/api/events',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
  const kind=(c.req.query('kind')||'').slice(0,60);
  const q=(c.req.query('q')||'').trim().slice(0,80);
+ const provider=(c.req.query('provider')||'').trim().slice(0,150);
+ const start=Math.max(0,Number(c.req.query('start'))||0);
+ const end=Number(c.req.query('end'))||4102444800;
  const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
  const limit=Math.min(Math.max(Number(c.req.query('limit'))||50,1),100);
- const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0)`;
- const binds=[modelId,modelId,kind,kind,q,q,q] as const;
+ const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND (?='' OR provider=?) AND created_at BETWEEN ? AND ?`;
+ const binds=[modelId,modelId,kind,kind,q,q,q,provider,provider,start,end] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at
    FROM price_events WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...binds,limit,(page-1)*limit).all(),
@@ -125,13 +128,35 @@ app.get('/api/events',async c=>{
  ]);
  return c.json({data:rows.results,page,limit,total:count?.total||0});
 });
+app.get('/api/events/export',async c=>{
+ const format=c.req.query('format')==='json'?'json':'csv';
+ const modelId=(c.req.query('model_id')||'').slice(0,200);
+ const kind=(c.req.query('kind')||'').slice(0,60);
+ const provider=(c.req.query('provider')||'').slice(0,150);
+ const q=(c.req.query('q')||'').slice(0,80);
+ const start=Math.max(0,Number(c.req.query('start'))||0),end=Number(c.req.query('end'))||4102444800;
+ const data=await c.env.DB.prepare("SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at FROM price_events WHERE (?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR provider=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND created_at BETWEEN ? AND ? ORDER BY created_at DESC LIMIT 1000")
+  .bind(modelId,modelId,kind,kind,provider,provider,q,q,q,start,end).all();
+ const headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="radar-events.'+format+'"','X-Export-Limit':'1000'};
+ if(format==='json')return c.json({data:data.results,limit:1000,exported_at:now()},200,headers);
+ const keys=['id','model_id','provider','kind','dimension','old_price','new_price','change_pct','created_at'];
+ const escape=(value:unknown)=>{
+  const raw=String(value??'');
+  // Escape potential spreadsheet formula injection even after opening a CSV.
+  const safe=/^[\s]*[=+\-@]/.test(raw)?"'"+raw:raw;
+  return '"'+safe.replace(/"/g,'""')+'"';
+ };
+ const csv=[keys.join(','),...data.results.map(row=>keys.map(k=>escape(row[k])).join(','))].join('\r\n');
+ return c.body('\ufeff'+csv,200,{...headers,'Content-Type':'text/csv; charset=utf-8'});
+});
 app.get('/feed.xml',async c=>{
+ const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
  const items=await c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,created_at
- FROM price_events ORDER BY created_at DESC LIMIT 50`).all<{id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;created_at:number}>();
+ FROM price_events ORDER BY created_at DESC LIMIT 50 OFFSET ?`).bind((page-1)*50).all<{id:string;model_id:string;provider:string;kind:string;dimension:string|null;old_price:string|null;new_price:string|null;created_at:number}>();
  const escape=(s:string)=>s.replace(/[<>&"']/g,ch=>({'<':'&lt;','>':'&gt;','&':'&quot;',"'":'&apos;','"':'&quot;'}[ch]||ch));
  const origin=c.env.APP_ORIGIN.replace(/\/$/,'');
  const xml='<?xml version="1.0" encoding="UTF-8"?>'+
- '<rss version="2.0"><channel><title>OpenRouter Radar changes</title><link>'+escape(origin)+'</link><description>Price and provider endpoint changes</description>'+
+ '<rss version="2.0"><channel><title>OpenRouter Radar changes</title><link>'+escape(origin)+'</link><description>Price and provider endpoint changes</description><atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="'+escape(origin+'/feed.xml?page='+page)+'" rel="self" type="application/rss+xml"/>'+
  items.results.map(e=>'<item><guid isPermaLink="false">'+escape(e.id)+'</guid><title>'+escape(e.model_id+' / '+e.provider+' — '+e.kind)+'</title><description>'+escape((e.dimension||'')+' '+(e.old_price||'')+' → '+(e.new_price||''))+'</description><pubDate>'+new Date(e.created_at*1000).toUTCString()+'</pubDate></item>').join('')+'</channel></rss>';
  return c.body(xml,200,{'Content-Type':'application/rss+xml; charset=utf-8'});
 });
