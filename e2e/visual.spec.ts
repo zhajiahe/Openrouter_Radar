@@ -62,6 +62,8 @@ for(const width of widths){
    await expect(page.locator('.detail-panel')).toContainText(MODEL_ID);
    await expect(page.getByRole('heading',{name:'Provider 报价'})).toBeVisible();
    await expect(page.locator('.radar-provider-table tbody tr')).toHaveCount(2);
+   await expect(page.getByRole('columnheader',{name:'Cache Read'})).toBeVisible();
+   await expect(page.locator('.radar-provider-table')).toContainText('$0.15');
    await expect(page.locator('.historic-card')).toContainText('实际观测点');
    await checkDocument(page,width);
    await capture(page,`${width}/model-detail.png`);

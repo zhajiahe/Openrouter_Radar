@@ -9,6 +9,7 @@ test('catalog requires the operator secret and never sends it as query data',asy
   auth=new Headers(init?.headers).get('Authorization')||'';
   assert.equal(init?.redirect,'manual','Cloudflare Workers supports manual redirect handling');
   assert.ok(!String(url).includes(KEY));
+  assert.ok(String(url).includes('output_modalities=all'));
   return new Response(JSON.stringify({data:[{id:'test/model',name:'Test',pricing:{prompt:'0'}}]}),{status:200});
  };
  try{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizePrice,parsePrices,findPriceChanges,thresholdMatches,endpointId} from '../src/pricing';
+import {normalizePrice,parsePrices,findPriceChanges,thresholdMatches,endpointId,observedPrices} from '../src/pricing';
 
 test('decimal normalization preserves tiny prices without Number rounding',()=>{
  assert.equal(normalizePrice('0.000000000003'),'0.000000000003');
@@ -47,4 +47,20 @@ test('unknown numeric pricing fields remain policy changes until their billing s
 test('non-numeric nested policy changes are not silently ignored',()=>{
  const changes=findPriceChanges(parsePrices({prompt:'0.000001',tiers:{large:'0.9'}}),parsePrices({prompt:'0.000001',tiers:{large:'0.8'}}));
  assert.deepEqual(changes.map(x=>[x.kind,x.dimension]),[['price.policy_changed','tiers']]);
+});
+
+test('cache read/write, audio cache and image output are monetary dimensions with native units',()=>{
+ const old=parsePrices({input_cache_read:'0.000001',input_cache_write:'0.000002',input_cache_write_1h:'0.000003',input_audio_cache:'0.000004',audio_output:'0.01',image_output:'0.02'});
+ const next=parsePrices({input_cache_read:'0.000002',input_cache_write:'0.000001',input_cache_write_1h:'0.000006',input_audio_cache:'0.000003',audio_output:'0.02',image_output:'0.01'});
+ assert.deepEqual(findPriceChanges(old,next).map(x=>x.dimension),['audio_output','cache_read','cache_write','cache_write_1h','image_output','input_audio_cache']);
+ const units=Object.fromEntries(observedPrices(next).map(p=>[p.dimension,p.unit]));
+ assert.equal(units.cache_read,'USD/token');
+ assert.equal(units.audio_output,'USD/second');
+ assert.equal(units.image_output,'USD/image');
+});
+test('unchanged scheduled UTC pricing is not announced as unconditional price increase',()=>{
+ const overrides=[{utc_start:800,utc_end:1600,prompt:'0.000002'}];
+ const before=parsePrices({prompt:'0.000001',overrides});
+ const after=parsePrices({prompt:'0.000002',overrides});
+ assert.deepEqual(findPriceChanges(before,after).map(c=>[c.kind,c.dimension]),[['price.policy_changed','scheduled_input']]);
 });
