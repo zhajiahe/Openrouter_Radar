@@ -5,6 +5,7 @@ import './router-inspired.css';
 import './monitoring.css';
 import './preferences.css';
 import {PriceHistory,CompareModels} from './monitoring';
+import {AnalyticsDashboard} from './analytics';
 
 type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number;model_kind?:string;lifecycle_status?:string};
 type ProviderOption={provider:string;model_count:number};
@@ -286,6 +287,7 @@ function App(){
       {[[stats.models,'模型总数','▦','目录内的公开模型'],[stats.providers,'活跃 Provider','◇','已发现的服务商'],[scanned,'已采集模型','◉','Provider 快照覆盖量'],[stats.events24h,'24小时事件','↗','过去一天的真实变化']].map(([value,labelText,icon,note])=>
        <div className="metric" key={String(labelText)}><div className="metric-label"><span aria-hidden="true">{icon}</span>{labelText}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
      </div>
+     <AnalyticsDashboard />
      <div className="section-head"><div><h2>Recent changes</h2><p className="section-heading-sub">{"仅展示实际发现的变化，不生成模拟数据"}</p></div><button className="text-action" onClick={()=>setView('events')}>{"全部事件"} ↗</button></div>
      <div className="overview-grid">
       <EventsTable data={recentEvents.slice(0,8)}/>
