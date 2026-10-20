@@ -1,16 +1,19 @@
-import React,{useEffect,useState} from 'react';
-import './analytics.css';
+import {useEffect,useState} from 'react';
+import {BarChart,DonutChart} from '@mantine/charts';
+import {ActionIcon,Button,Group,Loader,Progress,SegmentedControl,Select,Text} from '@mantine/core';
+import {Activity,ArrowUpRight,RefreshCw} from 'lucide-react';
+import './data-visualization.css';
 
 type DailyPoint={date:string;total:number;priceUp:number;priceDown:number;lifecycle:number;other:number};
 type ModelKind={kind:string;count:number};
 type ProviderRank={provider:string;models:number;endpoints:number};
 type AnalyticsData={days:7|30;from:number;to:number;updatedAt:number;daily:DailyPoint[];modelKinds:ModelKind[];topProviders:ProviderRank[]};
 const SERIES=[
- {key:'priceUp',label:'价格上涨',color:'var(--chart-up)'},
- {key:'priceDown',label:'价格下降',color:'var(--chart-down)'},
- {key:'lifecycle',label:'模型 / 端点状态',color:'var(--chart-violet)'},
- {key:'other',label:'其他变化',color:'var(--chart-muted)'}
-] as const;
+ {name:'priceUp',label:'价格上涨',color:'var(--chart-up)'},
+ {name:'priceDown',label:'价格下降',color:'var(--chart-down)'},
+ {name:'lifecycle',label:'模型 / 端点状态',color:'var(--chart-violet)'},
+ {name:'other',label:'其他变化',color:'var(--chart-muted)'}
+];
 const dateLabel=(value:string)=>new Date(value+'T00:00:00Z').toLocaleDateString('zh-CN',{month:'numeric',day:'numeric',timeZone:'UTC'});
 const number=(value:number)=>value.toLocaleString('zh-CN');
 const kindLabel=(kind:string)=>kind==='image'?'图片模型':kind==='standard'?'常规模型':kind==='other'?'其他模型':kind;
@@ -34,139 +37,60 @@ export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(
    finally{if(!cancelled)setLoading(false);}
   };
   void load();
-  const timer=window.setInterval(()=>void load(),60_000);
-  return ()=>{cancelled=true;window.clearInterval(timer);};
+  const interval=window.setInterval(()=>void load(),60_000);
+  return ()=>{cancelled=true;window.clearInterval(interval);};
  },[days,refreshToken]);
- const totalEvents=data?.daily.reduce((sum,d)=>sum+d.total,0)??0;
- const priceEvents=data?.daily.reduce((sum,d)=>sum+d.priceUp+d.priceDown,0)??0;
- const activeModels=data?.modelKinds.reduce((sum,k)=>sum+k.count,0)??0;
- const updatedLabel=data?.updatedAt?new Date(data.updatedAt*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—';
+ const visibleData=data?.days===days?data:null;
+ const totalEvents=visibleData?.daily.reduce((sum,d)=>sum+d.total,0)??0;
+ const priceEvents=visibleData?.daily.reduce((sum,d)=>sum+d.priceUp+d.priceDown,0)??0;
+ const activeModels=visibleData?.modelKinds.reduce((sum,k)=>sum+k.count,0)??0;
+ const updated=visibleData?.updatedAt?new Date(visibleData.updatedAt*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—';
+ const modelKinds=visibleData?.modelKinds.filter(x=>x.count>0).map((x,i)=>({
+  name:kindLabel(x.kind),value:x.count,color:['var(--chart-violet)','var(--chart-down)','var(--chart-up)','var(--chart-muted)'][i%4]
+ }))??[];
  return <section className="analytics-shell" aria-labelledby="analytics-title">
   <div className="analytics-heading">
-   <div className="analytics-title-copy">
-    <div className="eyebrow">MARKET TELEMETRY</div>
-    <h2 id="analytics-title">市场动态</h2>
-    <p>把真实的价格变化、模型生命周期与 Provider 覆盖，变成一眼能读懂的信号。</p>
-   </div>
-   <div className="analytics-toolbar">
-    <div className="analytics-range" role="group" aria-label="图表时间范围">
-     <button type="button" aria-pressed={days===7} className={days===7?'selected':''} onClick={()=>setDays(7)}>7 天</button>
-     <button type="button" aria-pressed={days===30} className={days===30?'selected':''} onClick={()=>setDays(30)}>30 天</button>
-    </div>
-    <button type="button" className={'analytics-refresh '+(loading?'spinning':'')} onClick={()=>setRefreshToken(v=>v+1)} disabled={loading} aria-label="刷新图表数据" title="刷新数据">↻</button>
-   </div>
+   <div><span className="eyebrow">MARKET TELEMETRY</span><h2 id="analytics-title">市场动态</h2><p>仅展示实际观察到的价格、生命周期与 Provider 变化。</p></div>
+   <Group gap="xs" wrap="nowrap">
+    <SegmentedControl size="xs" aria-label="市场趋势范围" value={String(days)} onChange={value=>setDays(value==='30'?30:7)} data={[{label:'7 天',value:'7'},{label:'30 天',value:'30'}]}/>
+    <ActionIcon variant="default" size="lg" aria-label="刷新市场图表" title="刷新" disabled={loading} onClick={()=>setRefreshToken(v=>v+1)}><RefreshCw size={16}/></ActionIcon>
+   </Group>
   </div>
   <div className="analytics-summary" aria-live="polite">
-   <div><span className="summary-pulse"/><span>{days} 天内真实事件</span><strong>{data?number(totalEvents):'—'}</strong></div>
-   <span className="summary-separator"/>
-   <div><span className="summary-mark price-mark">↗</span><span>价格调整</span><strong>{data?number(priceEvents):'—'}</strong></div>
-   <span className="summary-separator"/>
-   <div><span className="summary-mark model-mark">◈</span><span>当前活跃模型</span><strong>{data?number(activeModels):'—'}</strong></div>
-   <span className="analytics-updated">{loading?'同步中…':'更新于 '+updatedLabel}</span>
+   <div><Activity size={16} aria-hidden="true"/><span>{days} 天内事件</span><strong>{visibleData?number(totalEvents):'—'}</strong></div>
+   <div><ArrowUpRight size={16} aria-hidden="true"/><span>价格调整</span><strong>{visibleData?number(priceEvents):'—'}</strong></div>
+   <div><span>活跃模型</span><strong>{visibleData?number(activeModels):'—'}</strong></div>
+   <small>{loading?'同步中…':'最近更新 '+updated}</small>
   </div>
-  {error&&<div className="analytics-error" role="status"><span>{error}</span><button type="button" onClick={()=>setRefreshToken(v=>v+1)}>重试</button></div>}
+  {error&&<div className="chart-inline-error" role="alert">{error}<Button variant="light" size="xs" onClick={()=>setRefreshToken(v=>v+1)}>重试</Button></div>}
   <div className="analytics-grid">
    <section className="chart-panel chart-panel-wide" aria-labelledby="activity-title">
-    <div className="chart-panel-heading">
-     <div><span className="chart-kicker">SIGNAL FLOW</span><h3 id="activity-title">每日变动趋势</h3><p>按 UTC 日期统计的真实事件 · 点击柱条查看明细</p></div>
-     <div className="chart-total"><strong>{data?number(totalEvents):'—'}</strong><span>事件</span></div>
+    <div className="chart-heading"><div><h3 id="activity-title">每日变动趋势</h3><p>UTC 日期聚合，柱状图支持悬停和键盘查看</p></div><strong>{visibleData?number(totalEvents):'—'} 项</strong></div>
+    {visibleData?<BarChart h={260} data={visibleData.daily} dataKey="date" series={SERIES} type="stacked" withLegend withTooltip gridAxis="y" tickLine="none" valueFormatter={value=>number(value)} xAxisProps={{tickFormatter:dateLabel,interval:days===30?5:0}} />:<ChartPlaceholder loading={loading}/>}
+    {visibleData&&!visibleData.daily.some(d=>d.total>0)&&<p className="chart-muted">所选范围内没有真实变化事件。</p>}
+    <div className="chart-actions">
+     <Select size="xs" searchable clearable aria-label="选择一天查看变化事件" placeholder="选择有变化的日期查看事件" data={(visibleData?.daily??[]).filter(d=>d.total>0).map(d=>({value:d.date,label:dateLabel(d.date)+' · '+d.total+' 项'}))} onChange={value=>{if(value)onSelectDay(value);}}/>
     </div>
-    {data?<ActivityChart points={data.daily} onSelectDay={onSelectDay}/>:<ChartPlaceholder loading={loading}/>}
-    <div className="chart-legend">{SERIES.map(s=><span key={s.key}><i style={{background:s.color}}/>{s.label}</span>)}</div>
    </section>
    <section className="chart-panel chart-panel-mix" aria-labelledby="mix-title">
-    <div className="chart-panel-heading"><div><span className="chart-kicker">MODEL LANDSCAPE</span><h3 id="mix-title">模型类型构成</h3><p>当前活跃目录的模型分布</p></div></div>
-    {data?<ModelDonut data={data.modelKinds}/>:<ChartPlaceholder loading={loading}/>}
+    <div className="chart-heading"><div><h3 id="mix-title">模型类型构成</h3><p>当前活跃目录，非历史累计</p></div></div>
+    {visibleData?(modelKinds.length?<div className="donut-layout"><DonutChart size={180} thickness={22} paddingAngle={3} data={modelKinds} tooltipDataSource="segment" chartLabel={number(activeModels)}/><div className="donut-breakdown">{modelKinds.map(x=><div key={x.name}><span>{x.name}</span><strong>{number(x.value)}</strong></div>)}</div></div>:<p className="chart-muted">暂无活跃模型</p>):<ChartPlaceholder loading={loading}/>}
    </section>
    <section className="chart-panel chart-panel-providers" aria-labelledby="provider-title">
-    <div className="chart-panel-heading"><div><span className="chart-kicker">PROVIDER COVERAGE</span><h3 id="provider-title">活跃 Provider 排名</h3><p>按当前覆盖模型数量排序 · 点击 Provider 查看事件</p></div><span className="ranking-icon">↗</span></div>
-    {data?<ProviderBars data={data.topProviders} onSelectProvider={onSelectProvider}/>:<ChartPlaceholder loading={loading}/>}
+    <div className="chart-heading"><div><h3 id="provider-title">Provider 覆盖排行</h3><p>当前覆盖的模型数 · 点击查看相关变动</p></div></div>
+    {visibleData?(visibleData.topProviders.length?<div className="provider-ranking">{visibleData.topProviders.map((item,index)=>{
+     const max=Math.max(1,...visibleData.topProviders.map(v=>v.models));
+     return <button key={item.provider} type="button" className="provider-rank-row" onClick={()=>onSelectProvider(item.provider)}>
+      <div><span>{index+1}. {item.provider}</span><strong>{number(item.models)} 模型</strong></div>
+      <Progress value={item.models/max*100} color="violet" size="sm" aria-label={item.provider+' 覆盖 '+item.models+' 个模型'}/>
+      <small>{number(item.endpoints)} 个端点</small>
+     </button>;
+    })}</div>:<p className="chart-muted">暂无活跃 Provider</p>):<ChartPlaceholder loading={loading}/>}
    </section>
   </div>
-  <div className="analytics-footnote"><span>◉</span> 数据来自 Radar 的生产目录与事件记录 · 每分钟自动刷新{data?.days?' · UTC 日期聚合':''}</div>
+  <Text c="dimmed" size="xs" mt="sm">数据源：实例中的模型目录与变化事件。每分钟刷新，首次采集不算变价。</Text>
  </section>;
 }
-
-function ActivityChart({points,onSelectDay}:{points:DailyPoint[];onSelectDay:(date:string)=>void}){
- const [active,setActive]=useState<number|null>(null);
- const width=760,height=254,left=36,right=12,top=14,bottom=32;
- const plotWidth=width-left-right,plotHeight=height-top-bottom;
- const step=plotWidth/Math.max(points.length,1);
- const barWidth=Math.min(20,step*.58);
- const maxValue=Math.max(1,...points.map(p=>p.total));
- const ceiling=Math.max(4,Math.ceil(maxValue/4));
- const max=ceiling*4;
- const y=(value:number)=>top+plotHeight-(value/max)*plotHeight;
- const ticks=Array.from({length:5},(_,i)=>i*ceiling);
- const labelIndexes=[...new Set([0,Math.round((points.length-1)/3),Math.round((points.length-1)*2/3),points.length-1])];
- const hovered=active===null?null:points[active];
- return <div className="activity-chart">
-  <div className="activity-hover-readout">
-   <div><span className="readout-dot"/><span>{hovered?dateLabel(hovered.date):'悬停预览 · 点击日期查看事件'}</span></div>
-   <strong>{hovered?number(hovered.total)+' 个事件':'—'}</strong>
-   {hovered&&<small>涨价 {hovered.priceUp} · 降价 {hovered.priceDown} · 生命周期 {hovered.lifecycle} · 其他 {hovered.other}</small>}
-  </div>
-  <svg className="activity-svg" viewBox={'0 0 '+width+' '+height} role="img" aria-label={points.length+' 天每日事件堆叠柱状图'}>
-   <defs><linearGradient id="activityFade" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--chart-violet)" stopOpacity=".12"/><stop offset="100%" stopColor="var(--chart-violet)" stopOpacity="0"/></linearGradient></defs>
-   {ticks.map(t=><g key={t}><line x1={left} x2={width-right} y1={y(t)} y2={y(t)} className="chart-grid-line"/><text x={left-10} y={y(t)+4} className="chart-axis-label" textAnchor="end">{t}</text></g>)}
-   {points.map((point,index)=>{
-    const x=left+index*step+(step-barWidth)/2;
-    let stack=0;
-    const bars=SERIES.map(series=>{
-     const value=point[series.key];
-     const barY=y(stack+value),barH=(value/max)*plotHeight;
-     stack+=value;
-     return <rect key={series.key} x={x} y={barY} width={barWidth} height={Math.max(0,barH)} rx="2.5" fill={series.color} className="chart-stack-bar"/>;
-    });
-    const isActive=active===index;
-    return <g key={point.date} tabIndex={0} role="button" aria-label={point.date+'，'+point.total+' 个事件，点击查看明细'} onClick={()=>onSelectDay(point.date)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelectDay(point.date);}}} onMouseEnter={()=>setActive(index)} onMouseLeave={()=>setActive(null)} onFocus={()=>setActive(index)} onBlur={()=>setActive(null)} className={isActive?'chart-column is-active':'chart-column'}>
-     <rect x={left+index*step} y={top} width={step} height={plotHeight} fill={isActive?'var(--chart-hover)':'transparent'}/>
-     {point.total>0&&<line x1={x+barWidth/2} x2={x+barWidth/2} y1={y(point.total)} y2={top+plotHeight} className="chart-bar-stem"/>}
-     {bars}
-     {labelIndexes.includes(index)&&<text x={left+index*step+step/2} y={height-10} textAnchor="middle" className="chart-axis-label">{dateLabel(point.date)}</text>}
-    </g>;
-   })}
-  </svg>
-  {!points.some(p=>p.total>0)&&<div className="chart-empty-overlay">{'该时间段内暂无已确认事件'}</div>}
- </div>;
-}
-
-function ModelDonut({data}:{data:ModelKind[]}){
- const colors=['var(--chart-violet)','var(--chart-down)','var(--chart-up)'];
- const normalized=data.map((item,index)=>({...item,label:kindLabel(item.kind),color:colors[index%colors.length]}));
- const total=normalized.reduce((sum,item)=>sum+item.count,0);
- const radius=66,circumference=2*Math.PI*radius;
- let offset=0;
- const segments=normalized.map(item=>{
-  const length=total?item.count/total*circumference:0;
-  const result={...item,length,offset};
-  offset+=length;
-  return result;
- });
- return <div className="donut-layout">
-  <div className="donut-visual">
-   <svg viewBox="0 0 180 180" role="img" aria-label={'活跃模型类型构成，共 '+total+' 个模型'}>
-    <circle cx="90" cy="90" r={radius} className="donut-track" fill="none" strokeWidth="20"/>
-    {segments.map(segment=><circle key={segment.kind} cx="90" cy="90" r={radius} fill="none" stroke={segment.color} strokeWidth="20" strokeLinecap="round" strokeDasharray={total?segment.length+' '+(circumference-segment.length):'0 '+circumference} strokeDashoffset={-segment.offset} transform="rotate(-90 90 90)" className="donut-segment"><title>{segment.label}: {number(segment.count)}</title></circle>)}
-    <text x="90" y="86" textAnchor="middle" className="donut-center-value">{number(total)}</text>
-    <text x="90" y="106" textAnchor="middle" className="donut-center-label">活跃模型</text>
-   </svg>
-  </div>
-  <div className="donut-legend">{normalized.length?normalized.map(item=><div key={item.kind}><span className="donut-legend-label"><i style={{background:item.color}}/>{item.label}</span><strong>{number(item.count)}</strong><small>{total?Math.round(item.count/total*100):0}%</small></div>):<div className="chart-empty">暂无模型类型数据</div>}</div>
- </div>;
-}
-
-function ProviderBars({data,onSelectProvider}:{data:ProviderRank[];onSelectProvider:(provider:string)=>void}){
- const max=Math.max(1,...data.map(item=>item.models));
- return <div className="provider-bars">
-  {data.length?data.map((item,index)=><button type="button" className="provider-bar-row" key={item.provider} onClick={()=>onSelectProvider(item.provider)} aria-label={'查看 '+item.provider+' 的相关监控事件'} title={'查看 '+item.provider+' 的监控事件'}>
-   <div className="provider-bar-label"><span className="provider-rank">{String(index+1).padStart(2,'0')}</span><strong title={item.provider}>{item.provider}</strong><span>{number(item.models)} 模型</span></div>
-   <div className="provider-bar-track" role="img" aria-label={item.provider+' 覆盖 '+item.models+' 个模型和 '+item.endpoints+' 个端点'}><div className="provider-bar-fill" style={{width:(item.models/max*100)+'%',animationDelay:(index*65)+'ms'}}/></div>
-   <div className="provider-bar-meta"><span>{number(item.endpoints)} 个端点</span><span>{Math.round(item.models/max*100)}%</span></div>
-  </button>):<div className="chart-empty">暂无活跃 Provider 数据</div>}
- </div>;
-}
-
 function ChartPlaceholder({loading}:{loading:boolean}){
- return <div className={loading?'chart-placeholder is-loading':'chart-placeholder'} aria-label={loading?'正在加载图表':'图表数据不可用'}><span/>{loading?'正在汇总真实数据…':'暂无可用数据'}</div>;
+ return <div className="chart-placeholder" role="status">{loading?<><Loader size="sm"/>正在加载真实数据…</>:'暂无可用数据'}</div>;
 }

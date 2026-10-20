@@ -1,7 +1,9 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,TextInput} from '@mantine/core';
+import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,Table,TextInput} from '@mantine/core';
+import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,Sun,UserRound,X} from 'lucide-react';
 import {useDebouncedValue} from '@mantine/hooks';
 import '@mantine/core/styles.css';
+import '@mantine/charts/styles.css';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 import './router-inspired.css';
@@ -260,17 +262,21 @@ function App(){
  }
  async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);setView('overview');}
  const unread=notices.filter(n=>!n.read_at).length;
+ const navItems=[{id:'overview',name:'概览',icon:LayoutDashboard},{id:'catalog',name:'Models',icon:Layers},{id:'events',name:'Changes',icon:History},{id:'watches',name:'Watchlist',icon:Bookmark},{id:'notices',name:'通知',icon:Bell}];
  const titles:Record<string,string>={overview:'Overview',catalog:'Models',events:'Changes',watches:'Watchlist',notices:'Notifications',account:'Account'};
  const scanned=status.provider_scanned??0;
  const total=status.provider_total??stats.models;
  const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
+ const providerEndpoints=endpoints.filter(ep=>ep.source==='provider').sort((a,b)=>Number(b.status==='active')-Number(a.status==='active')||a.provider.localeCompare(b.provider));
+ const observedInput=providerEndpoints.filter(ep=>ep.status==='active'&&!ep.pricing_json.includes('image_pricing')).map(ep=>ep.input_price===null?NaN:Number(ep.input_price)).filter(value=>Number.isFinite(value)&&value>=0);
+ const lowestInput=observedInput.length?Math.min(...observedInput):null;
  return <MantineProvider forceColorScheme={theme} theme={{primaryColor:"violet",defaultRadius:"md",fontFamily:"Inter, PingFang SC, Noto Sans SC, system-ui, sans-serif",respectReducedMotion:true}}><div className="layout">
   <aside className="sidebar">
-   <div className="brand"><span className="brand-icon" aria-hidden="true">◈</span><span>OpenRouter <b>Radar</b></span></div>
+   <div className="brand"><span className="brand-icon" aria-hidden="true"><Radar size={21}/></span><span>OpenRouter <b>Radar</b></span></div>
    <div className="side-caption">MODEL MONITORING</div>
-   <nav aria-label="主要导航">{[['overview','⌂',"概览"],['catalog','▦','Models'],['events','↗','Changes'],['watches','☆','Watchlist'],['notices','◌',"通知"]] .map(([id,ico,name])=>
+   <nav aria-label="主要导航">{navItems.map(({id,name,icon:Icon})=>
     <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setError('');if(id!=='catalog')history.replaceState(null,'',location.pathname+location.search);}}>
-     <span className="nav-icon">{ico}</span>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
+     <Icon className="nav-icon" size={17} aria-hidden="true"/>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
     </button>)}</nav>
    <div className="side-footer"><span className="sidebar-status"><span className="online-dot"/> OPEN SOURCE RADAR</span><p>不需要个人 API Key。<br/>持续收集，按需订阅。</p><a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">在 GitHub 查看项目 ↗</a></div>
   </aside>
@@ -279,13 +285,13 @@ function App(){
     <div className="breadcrumb"><span>Radar</span><span className="breadcrumb-separator">/</span><b>{titles[view]}</b></div>
     <div className="topbar-actions">
      <span className={'live-indicator '+(status.status==='ok'?'':'muted-status')} role="status"><span className="online-dot"/>{status.status==='ok'?"同步正常":"同步状态待确认"}</span>
-     <div className="preference-controls"><button onClick={()=>setTheme(v=>v==='light'?'dark':'light')} aria-label="切换深色/浅色主题" title="外观">{theme==='light'?'☾':'☀'}</button></div>
-     <button className="account-button" onClick={()=>setView('account')}>{user?user.email:"登录 / 注册"} <span aria-hidden="true">↗</span></button>
+     <div className="preference-controls"><button onClick={()=>setTheme(v=>v==='light'?'dark':'light')} aria-label="切换深色/浅色主题" title="外观">{theme==='light'?<Moon size={16}/>:<Sun size={16}/>}</button></div>
+     <button className="account-button" onClick={()=>setView('account')}><UserRound size={15} aria-hidden="true"/>{user?user.email:"登录 / 注册"}</button>
     </div>
    </header>
    <div className="content">
-    {error&&<Alert className="radar-alert" color="red" title="操作失败" role="alert">{error}<button type="button" className="alert-close" aria-label="关闭错误提示" onClick={()=>setError('')}>×</button></Alert>}
-    {message&&<Alert className="radar-alert" color="green" title="操作成功" role="status">{message}<button type="button" className="alert-close" aria-label="关闭成功提示" onClick={()=>setMessage('')}>×</button></Alert>}
+    {error&&<Alert className="radar-alert" color="red" title="操作失败" role="alert">{error}<button type="button" className="alert-close" aria-label="关闭错误提示" onClick={()=>setError('')}><X size={17}/></button></Alert>}
+    {message&&<Alert className="radar-alert" color="green" title="操作成功" role="status">{message}<button type="button" className="alert-close" aria-label="关闭成功提示" onClick={()=>setMessage('')}><X size={17}/></button></Alert>}
     {view==='overview'&&<>
      <div className="hero">
       <div className="hero-copy">
@@ -293,27 +299,21 @@ function App(){
        <h1>Model prices,<br/><span className="accent">under your radar.</span></h1>
        <p>{"模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。浏览公开数据，订阅你在意的变动。"}</p>
        <div className="hero-actions">
-        <Button className="radar-cta" color="dark" onClick={()=>setView('catalog')}>探索模型目录 ↗</Button>
+        <Button className="radar-cta" color="dark" onClick={()=>setView('catalog')}>探索模型目录 <ArrowRight size={16}/></Button>
         <span className="hero-secondary">{"每小时采集 · 无需访客 API Key"}</span>
        </div>
       </div>
-      <div className="radar-visual" aria-hidden="true">
-       <i className="radar-ring"/><i className="radar-ring"/><i className="radar-ring"/>
-       <i className="radar-sweep"/><i className="radar-ping one"/><i className="radar-ping two"/><i className="radar-ping three"/>
-       <span className="radar-core">◉</span>
-       <span className="hero-radar-label">SIGNAL DETECTION · ACTIVE</span>
-      </div>
      </div>
      <div className="metrics">
-      {[[stats.models,'模型总数','▦','目录内的公开模型'],[stats.providers,'活跃 Provider','◇','已发现的服务商'],[scanned,'已采集模型','◉','Provider 快照覆盖量'],[stats.events24h,'24小时事件','↗','过去一天的真实变化']].map(([value,labelText,icon,note])=>
-       <div className="metric" key={String(labelText)}><div className="metric-label"><span aria-hidden="true">{icon}</span>{labelText}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
+      {[{value:stats.models,label:'模型总数',icon:Layers,note:'目录内公开模型'},{value:stats.providers,label:'活跃 Provider',icon:Activity,note:'已发现的服务商'},{value:scanned,label:'已采集模型',icon:Radar,note:'Provider 快照覆盖量'},{value:stats.events24h,label:'24 小时事件',icon:History,note:'过去一天的真实变化'}].map(({value,label,icon:Icon,note})=>
+       <div className="metric" key={label}><div className="metric-label"><Icon size={17} aria-hidden="true"/>{label}</div><strong>{Number(value).toLocaleString()}</strong><span className="metric-note">{note}</span></div>)}
      </div>
      <AnalyticsDashboard onSelectDay={day=>openEventDrilldown({day})} onSelectProvider={provider=>openEventDrilldown({provider})}/>
-     <div className="section-head"><div><h2>Recent changes</h2><p className="section-heading-sub">{"仅展示实际发现的变化，不生成模拟数据"}</p></div><button className="text-action" onClick={()=>setView('events')}>{"全部事件"} ↗</button></div>
+     <div className="section-head"><div><h2>Recent changes</h2><p className="section-heading-sub">{"仅展示实际发现的变化，不生成模拟数据"}</p></div><button className="text-action" onClick={()=>setView('events')}>{"全部事件"} <ArrowRight size={14}/></button></div>
      <div className="overview-grid">
       <EventsTable data={recentEvents.slice(0,8)}/>
       <div className="panel scanner-panel">
-       <div className="scanner-head"><strong>{"全量采集进度"}</strong><span className="scanner-icon" aria-hidden="true">◎</span></div>
+       <div className="scanner-head"><strong>{"全量采集进度"}</strong><Radar className="scanner-icon" size={19} aria-hidden="true"/></div>
        <div className="scanner-stat"><strong>{scanned.toLocaleString()}</strong><span>/ {total.toLocaleString()} 个模型</span></div>
        <div className="scanner-track" role="progressbar" aria-label="Provider 已扫描模型比例" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div className="scanner-bar" style={{width:progress+'%'}}/></div>
        <div className="scanner-meta"><span>{"Provider 快照覆盖"}</span><strong>{progress}%</strong></div>
@@ -328,7 +328,7 @@ function App(){
     {view==='catalog'&&<>
      <div className="page-heading"><div><div className="eyebrow">EXPLORE MODELS</div><h1>Models <span className="model-count">{modelTotal.toLocaleString()}</span></h1><p>{"按模型、Provider、价格探索 OpenRouter 市场。仅显示实际采集的数据。"}</p></div></div>
      <div className="search-row">
-      <div className="search-field"><span aria-hidden="true">⌕</span><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索 claude、gpt、deepseek…" /><kbd>/</kbd></div>
+      <div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索 claude、gpt、deepseek…" /><kbd>/</kbd></div>
       <label className="sort-field"><span>排序</span><Select aria-label="模型排序" value={sort} onChange={value=>{setSort(value||"name");setPage(1);}} data={[{value:"name",label:"名称 A–Z"},{value:"newest",label:"最近更新"},{value:"context",label:"上下文长度"},{value:"price",label:"最低输入价"}]}/></label>
      </div>
      <div className="catalog-grid">
@@ -341,9 +341,9 @@ function App(){
        <label htmlFor="capability-filter">{"能力参数"}</label><Select id="capability-filter" clearable placeholder="全部能力" value={capabilityFilter||null} onChange={v=>{setCapabilityFilter(v||"");setPage(1);}} data={[{value:"tools",label:"Tools"},{value:"reasoning",label:"Reasoning"},{value:"response_format",label:"JSON / Structured"}]}/>
        <label htmlFor="min-context">{"最小上下文 Tokens"}</label><NumberInput id="min-context" min={0} step={1024} thousandSeparator="," placeholder="不限" value={minContext} onChange={v=>{setMinContext(String(v));setPage(1);}}/>
        <label htmlFor="max-price">{"最高输入价 USD / 1M Tokens"}</label><NumberInput id="max-price" min={0} step={0.001} decimalScale={6} placeholder="不限" value={maxInput} onChange={v=>{setMaxInput(String(v));setPage(1);}}/>
-       <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}>{"清除筛选"} ↺</button>
+       <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}><RefreshCw size={14} aria-hidden="true"/> 清除筛选</button>
        <div className="filter-divider"/>
-       <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 ↗</a></div>
+       <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 <ExternalLink size={12} aria-hidden="true"/></a></div>
       </aside>
       <div className="panel models-panel">
        <div className="panel-title"><span>All models <span className="muted">({modelTotal.toLocaleString()})</span></span><span className="muted">USD / 1M tokens</span></div>
@@ -353,7 +353,7 @@ function App(){
          <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{m.context_length?Math.round(m.context_length/1024)+'K ctx':'无上下文限制'} · {m.model_kind==='image'?'图片模型 · ':''}{m.lifecycle_status==='removed'?'已下架 · ':''}{m.provider_count||0} providers</span></span>
          <span className="model-price">{m.lowest_input!==null&&m.lowest_input!==undefined?million(String(m.lowest_input)):'—'}<small>input / M</small></span>
         </button>
-        <button className={'compare-add '+(compareIds.includes(m.id)?'selected':'')} onClick={()=>toggleCompare(m.id)} aria-pressed={compareIds.includes(m.id)} aria-label={compareIds.includes(m.id)?'从对比移除 '+m.name:'加入模型对比 '+m.name}>{compareIds.includes(m.id)?'✓':'+'}</button>
+        <button className={'compare-add '+(compareIds.includes(m.id)?'selected':'')} onClick={()=>toggleCompare(m.id)} aria-pressed={compareIds.includes(m.id)} aria-label={compareIds.includes(m.id)?'从对比移除 '+m.name:'加入模型对比 '+m.name}>{compareIds.includes(m.id)?<Check size={16}/>:<Plus size={16}/>}</button>
        </div>)}
        {modelLoading&&<div className="empty loading-state" role="status"><Loader size="sm" /> 正在加载模型…</div>}
        {!modelLoading&&!models.length&&<div className="empty">{"没有匹配的模型。清除筛选，或等待下一次采集。"}</div>}</div>
@@ -361,50 +361,55 @@ function App(){
        <div className="pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(modelTotal/30))} value={page} onChange={setPage}/></div>
       </div>
       <div className="panel detail-panel" ref={detailRef}>{selected?<>
-       <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}>{"复制链接"} ↗</button></div>
+       <div className="panel-title"><span>模型详情</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}><Copy size={14} aria-hidden="true"/> 复制链接</button></div>
        <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code>{selected.lifecycle_status==='removed'&&<span className="event-tag">已确认下架 · 等待恢复</span>}{selected.model_kind==='image'&&<span className="event-tag">图片生成模型</span>}</div></div>
-       <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{collection?.active_endpoints??0}</strong> Active endpoints</span></div>
-       <div className={'collection-summary '+(collection?.status||'never')} role="status">
-        <strong>采集状态：{collection?.status==='fresh'?'近期成功':collection?.status==='error'?'采集失败':collection?.status==='stale'?'数据可能过期':'尚未成功采集'}</strong>
-        <span>上次成功：{collection?.last_success?time(collection.last_success):'无'} · 上次尝试：{collection?.last_attempt?time(collection.last_attempt):'无'}</span>
-        {collection?.last_error&&<small>{collection.last_error} · 已保留上次有效报价</small>}
-        {!!collection?.missing_endpoints&&<small>{collection.missing_endpoints} 个历史端点已标记下线</small>}
+       <div className="detail-quick-stats">
+        <div className="detail-quick-price"><span>{selected.model_kind==='image'?'图片计费':'最低公开输入价'}</span><strong>{selected.model_kind==='image'?'按计费项':lowestInput===null?'—':million(String(lowestInput))}</strong><small>{selected.model_kind==='image'?'单位请参阅报价明细':'USD / 1M tokens · 活跃端点'}</small></div>
+        <div><span>Context</span><strong>{selected.context_length?.toLocaleString()||'—'}</strong><small>Tokens</small></div>
+        <div><span>Provider 端点</span><strong>{collection?.active_endpoints??'—'}</strong><small>当前活跃</small></div>
+       </div>
+       <div className={'detail-health '+(collection?.status||'never')} role="status">
+        <Badge variant="light" size="sm" color={collection?.status==='fresh'?'teal':collection?.status==='error'?'red':collection?.status==='stale'?'yellow':'gray'}>{collection?.status==='fresh'?'近期采集成功':collection?.status==='error'?'采集失败':collection?.status==='stale'?'可能过期':'尚未成功采集'}</Badge>
+        <span>成功于 {collection?.last_success?time(collection.last_success):'暂无'}</span>
+        <span>最近尝试 {collection?.last_attempt?time(collection.last_attempt):'暂无'}</span>
+        {collection?.last_error&&<p>{collection.last_error} · 已保留有效历史报价</p>}
+        {!!collection?.missing_endpoints&&<p>{collection.missing_endpoints} 个历史端点已下线</p>}
        </div>
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
-       <div className="detail-section-head"><h3>Provider pricing</h3><small>USD / 1M tokens · 来自最近一次采集</small></div>
-       <div className="scroll-x"><table><thead><tr><th>Provider</th><th>Input</th><th>Output</th><th>检查时间</th></tr></thead><tbody>
-        {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.status==='superseded'?'已合并的旧端点':ep.tag||'Active'}</small></td><td className="num">{ep.pricing_json.includes('image_pricing')?'按图片独立计价':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'详见计费项目':endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
-       </tbody></table>{!endpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
+       <div className="detail-section-head"><h3>Provider 报价</h3><small>{selected.model_kind==='image'?'图片计费单位各异，详见原始规则':'USD / 百万 Token · 最新成功采集'}</small></div>
+       <div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col">检查时间</th></tr></thead><tbody>
+        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
+       </tbody></Table>{!providerEndpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
        <PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>
-       <div className="detail-section-head"><h3>Recent changes</h3><small>仅记录首次快照后的实际变化</small></div>
+       <div className="detail-section-head"><h3>最近变化</h3><small>仅记录基准建立后的实际变化</small></div>
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
         <label htmlFor="watch-provider">Provider</label>
         <Select id="watch-provider" searchable clearable placeholder="所有 Provider" value={watchProvider||null} onChange={v=>setWatchProvider(v||"")} data={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=>({value:p,label:p}))}/>
         <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><NumberInput id="watch-threshold" min={0} max={1000} decimalScale={2} value={threshold} onChange={v=>setThreshold(Number(v)||0)}/></div>
          <div><label htmlFor="watch-frequency">通知频率</label><Select id="watch-frequency" value={frequency} onChange={v=>setFrequency(v||"instant")} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日摘要 (UTC)"}]}/></div></div>
-        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>{const checked=e.currentTarget.checked;setKinds(a=>checked?[...a,id]:a.filter(k=>k!==id));}}/>)}</div></details>
-        <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</Button>
+        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 <ChevronDown size={13} aria-hidden="true"/></span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>{const checked=e.currentTarget.checked;setKinds(a=>checked?[...a,id]:a.filter(k=>k!==id));}}/>)}</div></details>
+        <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} <ArrowRight size={15}/></Button>
        </div>
-      </>:<div className="selection-empty"><span>▧</span><h3>{"选择一个模型"}</h3><p>{"对比 Provider 报价、查看真实变化、创建监控。"}</p><small>点击左侧模型查看详情</small></div>}</div>
+      </>:<div className="selection-empty"><span><Layers size={26}/></span><h3>{"选择一个模型"}</h3><p>{"对比 Provider 报价、查看真实变化、创建监控。"}</p><small>点击左侧模型查看详情</small></div>}</div>
      </div>
      {compareIds.length>=2&&<CompareModels ids={compareIds} onRemove={id=>toggleCompare(id)} onClose={()=>setCompareIds([])}/>}
     </>}
     {view==='events'&&<>
-     <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml">RSS ↗</a></div>
-     <div className="events-filters"><div className="search-field"><span aria-hidden="true">⌕</span><TextInput className="radar-search" aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
+     <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml"><Rss size={16}/> RSS</a></div>
+     <div className="events-filters"><div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput className="radar-search" aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
       <Select aria-label="事件类型" searchable clearable placeholder="全部事件" value={eventKind||null} onChange={v=>{setEventKind(v||"");setEventPage(1);}} data={EVENTS.map(([value,label])=>({value,label}))}/>
       <Select aria-label="Provider 筛选" searchable clearable placeholder="所有 Provider" value={eventProvider||null} onChange={v=>{setEventProvider(v||"");setEventPage(1);}} data={providers.map(p=>({value:p.provider,label:p.provider}))}/>
      </div>
      <div className="event-export-bar"><label>从 <input aria-label="开始日期" type="date" value={eventStart} onChange={e=>{setEventStart(e.target.value);setEventPage(1);}}/></label>
       <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
-      <a href={exportUrl('csv')}>CSV ↧</a><a href={exportUrl('json')}>JSON ↧</a><small>每次导出最多 1,000 条事件</small></div>
+      <a href={exportUrl('csv')}><Download size={13}/> CSV</a><a href={exportUrl('json')}><Download size={13}/> JSON</a><small>每次导出最多 1,000 条事件</small></div>
      <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
      <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
     </>}
-    {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><Button className="radar-cta" onClick={()=>setView('catalog')}>+ 新建订阅</Button></div>
+    {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><Button className="radar-cta" onClick={()=>setView('catalog')}><Plus size={16}/> 新建订阅</Button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
       {watches.length?<div className="watch-grid">{watches.map(w=><div className={'watch-card '+(w.paused?'is-paused':'')} key={w.id}><div>
        <div className="watch-topline"><span className="light-tag">{w.provider||'所有 Provider'}</span><span className={w.paused?'tag':'light-tag'}>{w.paused?'已暂停':'监控中'}</span></div>
@@ -432,7 +437,7 @@ function App(){
      </div>):<div className="empty roomy">暂时没有通知，模型价格有变化时这里会出现记录。</div>}</div>}
     </>}
     {view==='account'&&<><div className="page-heading"><div><div className="eyebrow">YOUR ACCOUNT</div><h1>{"账号与登录"}</h1><p>订阅者只需邮箱和密码，无需填写任何模型 API Key。</p></div></div>
-     {user?<><div className="panel auth-panel"><div className="avatar">◎</div><h2>{user.email}</h2><p>已登录 · 可以创建价格监控和接收通知</p><button className="outline-button" onClick={()=>void logout()}>{"退出登录"}</button></div></>:
+     {user?<><div className="panel auth-panel"><div className="avatar"><UserRound size={30}/></div><h2>{user.email}</h2><p>已登录 · 可以创建价格监控和接收通知</p><button className="outline-button" onClick={()=>void logout()}>{"退出登录"}</button></div></>:
      <div className="panel auth-panel"><h2>{authMode==='register'?'创建免费账号':authMode==='reset'?'设置新密码':authMode==='forgot'?'找回密码':'欢迎回来'}</h2>
      <p>价格数据公开。注册后可订阅变动提醒。</p>
      <form onSubmit={e=>void submitAuth(e)}>
@@ -456,8 +461,8 @@ function App(){
 }
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
- return <div className="panel table-panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
- {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td><span>{formatEvent(e)}</span></td><td><small>{time(e.created_at)}</small></td></tr>)}
- </tbody></table>{!data.length&&<div className="empty roomy">还没有价格变化事件。完成首次采集后，系统只记录后续真实变化。</div>}</div></div>;
+ return <div className="panel table-panel"><div className="scroll-x"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
+ {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'?'teal':e.kind==='price.increased'?'red':'gray'}>{label(e.kind)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell">{time(e.created_at)}</td></tr>)}
+ </tbody></Table>{!data.length&&<div className="empty roomy">还没有实际变化事件。首次采集只建立基准。</div>}</div></div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

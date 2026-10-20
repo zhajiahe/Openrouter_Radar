@@ -82,7 +82,7 @@
   border-radius:0;color:var(--radar-text);padding:17px 0 32px;
   margin:0 0 8px
 }
-.hero::after,.radar-visual{display:none}
+.hero::after{display:none}
 .hero .eyebrow{color:var(--radar-text-tertiary);font-size:10px;font-weight:700}
 .hero .eyebrow::before{background:#8871d3;width:6px;height:6px}
 .hero h1{
