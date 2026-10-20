@@ -1,9 +1,13 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {Alert,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,TextInput} from '@mantine/core';
+import {useDebouncedValue} from '@mantine/hooks';
+import '@mantine/core/styles.css';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 import './router-inspired.css';
 import './monitoring.css';
 import './preferences.css';
+import './component-library.css';
 import {PriceHistory,CompareModels} from './monitoring';
 import {AnalyticsDashboard} from './analytics';
 import {utcEventBounds} from './event-date';
@@ -72,6 +76,10 @@ function App(){
  const [maxInput,setMaxInput]=useState('');
  const [compareIds,setCompareIds]=useState<string[]>([]);
  const catalogSearch=useRef<HTMLInputElement>(null);
+ const modelRequest=useRef(0);
+ const eventRequest=useRef(0);
+ const detailRef=useRef<HTMLDivElement>(null);
+ const [deleteWatchId,setDeleteWatchId]=useState<string|null>(null);
  const [events,setEvents]=useState<Event[]>([]);
  const [recentEvents,setRecentEvents]=useState<Event[]>([]);
  const [modelEvents,setModelEvents]=useState<Event[]>([]);
@@ -88,6 +96,8 @@ function App(){
  const [watchDraft,setWatchDraft]=useState<{provider:string;threshold_pct:number;frequency:string;events:string[]}>({provider:'',threshold_pct:0,frequency:'instant',events:[]});
  const [notices,setNotices]=useState<Notice[]>([]);
  const [search,setSearch]=useState('');
+ const [debouncedSearch]=useDebouncedValue(search,250);
+ const [debouncedEventSearch]=useDebouncedValue(eventSearch,250);
  const [page,setPage]=useState(1);
  const [selected,setSelected]=useState<Model|null>(null);
  const [endpoints,setEndpoints]=useState<Endpoint[]>([]);
@@ -110,13 +120,14 @@ function App(){
   if(results[1].status==='fulfilled')setNotices(results[1].value.data);
  }
  async function loadModels(q:string,p:number,provider:string,order:string,author:string,modality:string,capability:string,context:string,maxPrice:string){
+  const requestId=++modelRequest.current;
   setModelLoading(true);
   try{
    const params=new URLSearchParams({q,page:String(p),limit:'30',provider,sort:order,author,modality,capability,min_context:context});
    if(maxPrice.trim())params.set('max_input_price',maxPrice);
    const r=await api<{data:Model[];total:number}>('/models?'+params.toString());
-   setModels(r.data);setModelTotal(r.total);
-  }catch(e){setError((e as Error).message);}finally{setModelLoading(false);}
+   if(requestId===modelRequest.current){setModels(r.data);setModelTotal(r.total);}
+  }catch(e){if(requestId===modelRequest.current)setError((e as Error).message);}finally{if(requestId===modelRequest.current)setModelLoading(false);}
  }
  function openEventDrilldown(filter:{day?:string;provider?:string}){
   setEventSearch('');setEventKind('');setEventPage(1);
@@ -126,17 +137,19 @@ function App(){
   window.scrollTo({top:0,behavior:'auto'});
  }
  async function loadEvents(q:string,kind:string,p:number,provider:string,start:string,end:string){
+  const requestId=++eventRequest.current;
   setLoadingEvents(true);
   try{
    const params=new URLSearchParams({q,kind,page:String(p),limit:'30',provider});
    if(start){const bounds=utcEventBounds(start);if(bounds)params.set('start',String(bounds.start));}
    if(end){const bounds=utcEventBounds(end);if(bounds)params.set('end',String(bounds.end));}
    const r=await api<{data:Event[];total:number}>('/events?'+params.toString());
-   setEvents(r.data);setEventTotal(r.total);
-  }catch(e){setError((e as Error).message);}finally{setLoadingEvents(false);}
+   if(requestId===eventRequest.current){setEvents(r.data);setEventTotal(r.total);}
+  }catch(e){if(requestId===eventRequest.current)setError((e as Error).message);}finally{if(requestId===eventRequest.current)setLoadingEvents(false);}
  }
  async function inspect(model:Model){
   setSelected(model);setView('catalog');setWatchProvider('');setThreshold(0);setFrequency('instant');
+  if(window.matchMedia('(max-width: 990px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
   setEndpoints([]);setModelEvents([]);setCollection(null);
   history.replaceState(null,'','#model='+encodeURIComponent(model.id));
   try{
@@ -160,8 +173,8 @@ function App(){
   void loadPublic();
  },[]);
  useEffect(()=>{if(user)void loadPrivate();},[user]);
- useEffect(()=>{void loadModels(search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput);},[search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput]);
- useEffect(()=>{void loadEvents(eventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd);},[eventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd]);
+ useEffect(()=>{void loadModels(debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput);},[debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput]);
+ useEffect(()=>{void loadEvents(debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd);},[debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd]);
  useEffect(()=>{
   const onKey=(event:KeyboardEvent)=>{
    const el=event.target as HTMLElement;
@@ -230,9 +243,9 @@ function App(){
   return '/api/events/export?'+params.toString();
  }
  async function removeWatch(id:string){
-  if(!confirm('确定取消这条监控订阅吗？'))return;
-  try{await api('/subscriptions/'+encodeURIComponent(id),{method:'DELETE'});await loadPrivate();}
-  catch(e){setError((e as Error).message);}
+  setBusy(true);
+  try{await api('/subscriptions/'+encodeURIComponent(id),{method:'DELETE'});await loadPrivate();setMessage('已删除订阅规则');return true;}
+  catch(e){setError((e as Error).message);return false;}finally{setBusy(false);}
  }
  async function readNotice(id:string){
   try{await api('/notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH'});await loadPrivate();}
@@ -251,7 +264,7 @@ function App(){
  const scanned=status.provider_scanned??0;
  const total=status.provider_total??stats.models;
  const progress=total>0?Math.min(100,Math.round(scanned/total*100)):0;
- return <div className="layout">
+ return <MantineProvider forceColorScheme={theme} theme={{primaryColor:"violet",defaultRadius:"md",fontFamily:"Inter, PingFang SC, Noto Sans SC, system-ui, sans-serif",respectReducedMotion:true}}><div className="layout">
   <aside className="sidebar">
    <div className="brand"><span className="brand-icon" aria-hidden="true">◈</span><span>OpenRouter <b>Radar</b></span></div>
    <div className="side-caption">MODEL MONITORING</div>
@@ -271,8 +284,8 @@ function App(){
     </div>
    </header>
    <div className="content">
-    {error&&<div className="toast error" role="alert">{error}<button type="button" aria-label="关闭错误提示" onClick={()=>setError('')}>×</button></div>}
-    {message&&<div className="toast success" role="status">{message}<button type="button" aria-label="关闭成功提示" onClick={()=>setMessage('')}>×</button></div>}
+    {error&&<Alert className="radar-alert" color="red" title="操作失败" role="alert">{error}<button type="button" className="alert-close" aria-label="关闭错误提示" onClick={()=>setError('')}>×</button></Alert>}
+    {message&&<Alert className="radar-alert" color="green" title="操作成功" role="status">{message}<button type="button" className="alert-close" aria-label="关闭成功提示" onClick={()=>setMessage('')}>×</button></Alert>}
     {view==='overview'&&<>
      <div className="hero">
       <div className="hero-copy">
@@ -280,7 +293,7 @@ function App(){
        <h1>Model prices,<br/><span className="accent">under your radar.</span></h1>
        <p>{"模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。浏览公开数据，订阅你在意的变动。"}</p>
        <div className="hero-actions">
-        <button className="primary" onClick={()=>setView('catalog')}>{"探索模型目录"} <span aria-hidden="true">↗</span></button>
+        <Button className="radar-cta" color="dark" onClick={()=>setView('catalog')}>探索模型目录 ↗</Button>
         <span className="hero-secondary">{"每小时采集 · 无需访客 API Key"}</span>
        </div>
       </div>
@@ -315,22 +328,19 @@ function App(){
     {view==='catalog'&&<>
      <div className="page-heading"><div><div className="eyebrow">EXPLORE MODELS</div><h1>Models <span className="model-count">{modelTotal.toLocaleString()}</span></h1><p>{"按模型、Provider、价格探索 OpenRouter 市场。仅显示实际采集的数据。"}</p></div></div>
      <div className="search-row">
-      <div className="search-field"><span aria-hidden="true">⌕</span><input ref={catalogSearch} aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="Search models, e.g. claude, gpt, deepseek..." /><kbd>/</kbd></div>
-      <label className="sort-field"><span>排序</span><select aria-label="模型排序" value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}}><option value="name">名称 A–Z</option><option value="newest">最近更新</option><option value="context">上下文长度</option><option value="price">最低输入价</option></select></label>
+      <div className="search-field"><span aria-hidden="true">⌕</span><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索 claude、gpt、deepseek…" /><kbd>/</kbd></div>
+      <label className="sort-field"><span>排序</span><Select aria-label="模型排序" value={sort} onChange={value=>{setSort(value||"name");setPage(1);}} data={[{value:"name",label:"名称 A–Z"},{value:"newest",label:"最近更新"},{value:"context",label:"上下文长度"},{value:"price",label:"最低输入价"}]}/></label>
      </div>
      <div className="catalog-grid">
       <aside className="panel filter-panel" aria-label="模型筛选">
        <h3>Filters</h3>
        <label htmlFor="provider-filter">Provider</label>
-       <select id="provider-filter" value={providerFilter} onChange={e=>{setProviderFilter(e.target.value);setPage(1);setSelected(null);}}>
-        <option value="">All providers</option>
-        {providers.map(p=><option key={p.provider} value={p.provider}>{p.provider} · {p.model_count}</option>)}
-       </select>
-       <label htmlFor="author-filter">{"模型作者"}</label><input id="author-filter" placeholder="e.g. openai" value={authorFilter} onChange={e=>{setAuthorFilter(e.target.value);setPage(1);}}/>
-       <label htmlFor="modality-filter">{"输入模态"}</label><select id="modality-filter" value={modalityFilter} onChange={e=>{setModalityFilter(e.target.value);setPage(1);}}><option value="">{"全部模态"}</option><option value="text">Text</option><option value="image">Image</option><option value="audio">Audio</option><option value="video">Video</option></select>
-       <label htmlFor="capability-filter">{"能力参数"}</label><select id="capability-filter" value={capabilityFilter} onChange={e=>{setCapabilityFilter(e.target.value);setPage(1);}}><option value="">{"全部能力"}</option><option value="tools">Tools</option><option value="reasoning">Reasoning</option><option value="response_format">JSON / Structured</option></select>
-       <label htmlFor="min-context">{"最小上下文 Tokens"}</label><input id="min-context" type="number" min="0" step="1024" placeholder="不限" value={minContext} onChange={e=>{setMinContext(e.target.value);setPage(1);}}/>
-       <label htmlFor="max-price">{"最高输入价 USD / 1M Tokens"}</label><input id="max-price" type="number" min="0" step=".001" placeholder="不限" value={maxInput} onChange={e=>{setMaxInput(e.target.value);setPage(1);}}/>
+       <Select id="provider-filter" searchable clearable nothingFoundMessage="未找到 Provider" placeholder="所有 Provider" value={providerFilter||null} onChange={v=>{setProviderFilter(v||"");setPage(1);setSelected(null);}} data={providers.map(p=>({value:p.provider,label:p.provider+" · "+p.model_count}))}/>
+       <label htmlFor="author-filter">{"模型作者"}</label><TextInput id="author-filter" placeholder="例如 openai" value={authorFilter} onChange={e=>{setAuthorFilter(e.target.value);setPage(1);}}/>
+       <label htmlFor="modality-filter">{"输入模态"}</label><Select id="modality-filter" clearable placeholder="全部模态" value={modalityFilter||null} onChange={v=>{setModalityFilter(v||"");setPage(1);}} data={["text","image","audio","video"].map(value=>({value,label:value[0].toUpperCase()+value.slice(1)}))}/>
+       <label htmlFor="capability-filter">{"能力参数"}</label><Select id="capability-filter" clearable placeholder="全部能力" value={capabilityFilter||null} onChange={v=>{setCapabilityFilter(v||"");setPage(1);}} data={[{value:"tools",label:"Tools"},{value:"reasoning",label:"Reasoning"},{value:"response_format",label:"JSON / Structured"}]}/>
+       <label htmlFor="min-context">{"最小上下文 Tokens"}</label><NumberInput id="min-context" min={0} step={1024} thousandSeparator="," placeholder="不限" value={minContext} onChange={v=>{setMinContext(String(v));setPage(1);}}/>
+       <label htmlFor="max-price">{"最高输入价 USD / 1M Tokens"}</label><NumberInput id="max-price" min={0} step={0.001} decimalScale={6} placeholder="不限" value={maxInput} onChange={v=>{setMaxInput(String(v));setPage(1);}}/>
        <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}>{"清除筛选"} ↺</button>
        <div className="filter-divider"/>
        <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 ↗</a></div>
@@ -345,12 +355,12 @@ function App(){
         </button>
         <button className={'compare-add '+(compareIds.includes(m.id)?'selected':'')} onClick={()=>toggleCompare(m.id)} aria-pressed={compareIds.includes(m.id)} aria-label={compareIds.includes(m.id)?'从对比移除 '+m.name:'加入模型对比 '+m.name}>{compareIds.includes(m.id)?'✓':'+'}</button>
        </div>)}
-       {modelLoading&&<div className="empty" role="status">{"正在加载模型"}…</div>}
+       {modelLoading&&<div className="empty loading-state" role="status"><Loader size="sm" /> 正在加载模型…</div>}
        {!modelLoading&&!models.length&&<div className="empty">{"没有匹配的模型。清除筛选，或等待下一次采集。"}</div>}</div>
        {compareIds.length>0&&<div className="compare-toolbar"><span>已选 {compareIds.length}/3 个模型</span><button onClick={()=>setCompareIds([])}>清空</button></div>}
-       <div className="pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Previous</button><span>{page} / {Math.max(1,Math.ceil(modelTotal/30))}</span><button disabled={page*30>=modelTotal} onClick={()=>setPage(p=>p+1)}>Next →</button></div>
+       <div className="pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(modelTotal/30))} value={page} onChange={setPage}/></div>
       </div>
-      <div className="panel detail-panel">{selected?<>
+      <div className="panel detail-panel" ref={detailRef}>{selected?<>
        <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}>{"复制链接"} ↗</button></div>
        <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code>{selected.lifecycle_status==='removed'&&<span className="event-tag">已确认下架 · 等待恢复</span>}{selected.model_kind==='image'&&<span className="event-tag">图片生成模型</span>}</div></div>
        <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{collection?.active_endpoints??0}</strong> Active endpoints</span></div>
@@ -372,11 +382,11 @@ function App(){
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
         <label htmlFor="watch-provider">Provider</label>
-        <select id="watch-provider" value={watchProvider} onChange={e=>setWatchProvider(e.target.value)}><option value="">{"所有 Provider"}</option>{[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=><option key={p} value={p}>{p}</option>)}</select>
-        <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><input id="watch-threshold" type="number" min="0" max="1000" value={threshold} onChange={e=>setThreshold(Number(e.target.value))}/></div>
-         <div><label htmlFor="watch-frequency">通知频率</label><select id="watch-frequency" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="instant">尽快通知</option><option value="daily">每日摘要 (UTC)</option></select></div></div>
-        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><label key={id}><input type="checkbox" checked={kinds.includes(id)} onChange={e=>setKinds(a=>e.target.checked?[...a,id]:a.filter(k=>k!==id))}/>{text}</label>)}</div></details>
-        <button className="primary full" disabled={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</button>
+        <Select id="watch-provider" searchable clearable placeholder="所有 Provider" value={watchProvider||null} onChange={v=>setWatchProvider(v||"")} data={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))].map(p=>({value:p,label:p}))}/>
+        <div className="subscribe-inline"><div><label htmlFor="watch-threshold">最小价格变化 (%)</label><NumberInput id="watch-threshold" min={0} max={1000} decimalScale={2} value={threshold} onChange={v=>setThreshold(Number(v)||0)}/></div>
+         <div><label htmlFor="watch-frequency">通知频率</label><Select id="watch-frequency" value={frequency} onChange={v=>setFrequency(v||"instant")} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日摘要 (UTC)"}]}/></div></div>
+        <details className="advanced-watch"><summary>提醒事件 · 已选 {kinds.length} 种 <span>修改 ↘</span></summary><div className="checks">{EVENTS.map(([id,text])=><Checkbox key={id} size="xs" label={text} checked={kinds.includes(id)} onChange={e=>{const checked=e.currentTarget.checked;setKinds(a=>checked?[...a,id]:a.filter(k=>k!==id));}}/>)}</div></details>
+        <Button className="radar-cta" fullWidth loading={busy} onClick={()=>void addWatch()}>{user?'创建价格监控':'登录后订阅'} →</Button>
        </div>
       </>:<div className="selection-empty"><span>▧</span><h3>{"选择一个模型"}</h3><p>{"对比 Provider 报价、查看真实变化、创建监控。"}</p><small>点击左侧模型查看详情</small></div>}</div>
      </div>
@@ -384,17 +394,17 @@ function App(){
     </>}
     {view==='events'&&<>
      <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml">RSS ↗</a></div>
-     <div className="events-filters"><div className="search-field"><span aria-hidden="true">⌕</span><input aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
-      <select aria-label="事件类型" value={eventKind} onChange={e=>{setEventKind(e.target.value);setEventPage(1);}}><option value="">全部事件</option>{EVENTS.map(([id,text])=><option key={id} value={id}>{text}</option>)}</select>
-      <select aria-label="Provider 筛选" value={eventProvider} onChange={e=>{setEventProvider(e.target.value);setEventPage(1);}}><option value="">所有 Provider</option>{providers.map(p=><option key={p.provider} value={p.provider}>{p.provider}</option>)}</select>
+     <div className="events-filters"><div className="search-field"><span aria-hidden="true">⌕</span><TextInput className="radar-search" aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
+      <Select aria-label="事件类型" searchable clearable placeholder="全部事件" value={eventKind||null} onChange={v=>{setEventKind(v||"");setEventPage(1);}} data={EVENTS.map(([value,label])=>({value,label}))}/>
+      <Select aria-label="Provider 筛选" searchable clearable placeholder="所有 Provider" value={eventProvider||null} onChange={v=>{setEventProvider(v||"");setEventPage(1);}} data={providers.map(p=>({value:p.provider,label:p.provider}))}/>
      </div>
      <div className="event-export-bar"><label>从 <input aria-label="开始日期" type="date" value={eventStart} onChange={e=>{setEventStart(e.target.value);setEventPage(1);}}/></label>
       <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
       <a href={exportUrl('csv')}>CSV ↧</a><a href={exportUrl('json')}>JSON ↧</a><small>每次导出最多 1,000 条事件</small></div>
      <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
-     <div className="pager events-pager"><button disabled={eventPage<=1} onClick={()=>setEventPage(p=>p-1)}>← Previous</button><span>{eventPage} / {Math.max(1,Math.ceil(eventTotal/30))}</span><button disabled={eventPage*30>=eventTotal} onClick={()=>setEventPage(p=>p+1)}>Next →</button></div>
+     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
     </>}
-    {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><button className="primary" onClick={()=>setView('catalog')}>+ 新建订阅</button></div>
+    {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><Button className="radar-cta" onClick={()=>setView('catalog')}>+ 新建订阅</Button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
       {watches.length?<div className="watch-grid">{watches.map(w=><div className={'watch-card '+(w.paused?'is-paused':'')} key={w.id}><div>
        <div className="watch-topline"><span className="light-tag">{w.provider||'所有 Provider'}</span><span className={w.paused?'tag':'light-tag'}>{w.paused?'已暂停':'监控中'}</span></div>
@@ -403,16 +413,16 @@ function App(){
        <div className="watch-delivery"><span>最近命中：{w.last_hit?time(w.last_hit):'尚无'}</span><span>最近邮件：{w.last_sent?time(w.last_sent):'尚无'}</span>
         <span>发送状态：{w.latest_status||'无通知'}{w.frequency==='daily'&&!w.paused?' · 下一摘要窗口 UTC 08:00':''}</span></div>
        {editingWatch===w.id&&<div className="watch-editor">
-        <label>Provider <input value={watchDraft.provider} placeholder="留空表示所有 Provider" onChange={e=>setWatchDraft(v=>({...v,provider:e.target.value}))}/></label>
-        <label>最小变化百分比 <input type="number" min="0" max="1000" value={watchDraft.threshold_pct} onChange={e=>setWatchDraft(v=>({...v,threshold_pct:Number(e.target.value)}))}/></label>
-        <label>通知节奏 <select value={watchDraft.frequency} onChange={e=>setWatchDraft(v=>({...v,frequency:e.target.value}))}><option value="instant">尽快通知</option><option value="daily">每日汇总（UTC）</option></select></label>
-        <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><label key={kind}><input type="checkbox" checked={watchDraft.events.includes(kind)} onChange={e=>setWatchDraft(v=>({...v,events:e.target.checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}))}/>{name}</label>)}</div></details>
-        <div className="watch-actions"><button className="primary" disabled={busy} onClick={()=>void saveWatch(w.id)}>保存</button><button onClick={()=>setEditingWatch(null)}>取消</button></div>
+        <TextInput label="Provider" value={watchDraft.provider} placeholder="留空表示所有 Provider" onChange={e=>setWatchDraft(v=>({...v,provider:e.target.value}))}/>
+        <NumberInput label="最小变化百分比" min={0} max={1000} value={watchDraft.threshold_pct} onChange={value=>setWatchDraft(v=>({...v,threshold_pct:Number(value)||0}))}/>
+        <Select label="通知节奏" value={watchDraft.frequency} onChange={value=>setWatchDraft(v=>({...v,frequency:value||"instant"}))} data={[{value:"instant",label:"尽快通知"},{value:"daily",label:"每日汇总（UTC）"}]}/>
+        <details><summary>提醒事件 · {watchDraft.events.length} 项</summary><div className="checks">{EVENTS.map(([kind,name])=><Checkbox key={kind} size="xs" label={name} checked={watchDraft.events.includes(kind)} onChange={e=>{const checked=e.currentTarget.checked;setWatchDraft(v=>({...v,events:checked?[...v.events,kind]:v.events.filter(k=>k!==kind)}));}}/>)}</div></details>
+        <div className="watch-actions"><Button className="radar-cta" loading={busy} onClick={()=>void saveWatch(w.id)}>保存</Button><button onClick={()=>setEditingWatch(null)}>取消</button></div>
        </div>}
       </div><div className="watch-actions">
        <button onClick={()=>editingWatch===w.id?setEditingWatch(null):startEditWatch(w)}>{editingWatch===w.id?'收起编辑':'编辑规则'}</button>
        <button onClick={()=>void togglePaused(w)}>{w.paused?'恢复提醒':'暂停提醒'}</button>
-       <button className="delete" onClick={()=>void removeWatch(w.id)}>删除</button>
+       <button className="delete" onClick={()=>setDeleteWatchId(w.id)}>删除</button>
       </div></div>)}</div>:<div className="empty roomy">还没有任何订阅。进入模型目录，选择你想关注的模型。</div>}</div>}
     </>}
     {view==='notices'&&<><div className="page-heading"><div><div className="eyebrow">YOUR ALERTS</div><h1>{"通知中心"}</h1><p>站内记录每次命中订阅规则的事件，邮件发送状态同步展示。</p></div></div>
@@ -426,9 +436,9 @@ function App(){
      <div className="panel auth-panel"><h2>{authMode==='register'?'创建免费账号':authMode==='reset'?'设置新密码':authMode==='forgot'?'找回密码':'欢迎回来'}</h2>
      <p>价格数据公开。注册后可订阅变动提醒。</p>
      <form onSubmit={e=>void submitAuth(e)}>
-      {authMode!=='reset'&&<><label>电子邮箱</label><input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></>}
-      {authMode!=='forgot'&&<><label>密码（至少 12 个字符）</label><input required minLength={12} type="password" autoComplete={authMode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)}/></>}
-      <button disabled={busy} className="primary full" type="submit">{busy?'处理中…':authMode==='register'?'注册并发送验证邮件':authMode==='forgot'?'发送重置邮件':authMode==='reset'?'重置密码':'登录'}</button>
+      {authMode!=='reset'&&<><TextInput required label="电子邮箱" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></>}
+      {authMode!=='forgot'&&<><TextInput required label="密码（至少 12 个字符）" minLength={12} type="password" autoComplete={authMode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)}/></>}
+      <Button className="radar-cta" fullWidth loading={busy} type="submit">{authMode==='register'?'注册并发送验证邮件':authMode==='forgot'?'发送重置邮件':authMode==='reset'?'重置密码':'登录'}</Button>
      </form><div className="auth-actions">
       <button onClick={()=>{setAuthMode(authMode==='register'?'login':'register');setError('');}}> {authMode==='register'?'已有账号？登录':'没有账号？注册'}</button>
       <button onClick={()=>{setAuthMode('forgot');setError('');}}>忘记密码？</button>
@@ -437,9 +447,14 @@ function App(){
     </>}
    </div>
   </main>
- </div>;
+ </div>
+ <Modal opened={deleteWatchId!==null} onClose={()=>setDeleteWatchId(null)} title="删除订阅规则" centered size="sm">
+  <p className="modal-description">删除后将停止匹配和发送这条规则的提醒，此操作不可撤销。</p>
+  <div className="modal-actions"><Button variant="default" onClick={()=>setDeleteWatchId(null)}>取消</Button><Button color="red" loading={busy} onClick={()=>{if(deleteWatchId){void removeWatch(deleteWatchId).then(success=>{if(success)setDeleteWatchId(null);});}}}>确认删除</Button></div>
+ </Modal>
+ </MantineProvider>;
 }
-function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><button className="primary" onClick={onLogin}>注册 / 登录 →</button></div>}
+function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
  return <div className="panel table-panel"><div className="scroll-x"><table className="events-table"><thead><tr><th>模型 / Provider</th><th>事件</th><th>变化</th><th>发现时间</th></tr></thead><tbody>
  {data.map(e=><tr key={e.id}><td><strong>{e.model_id}</strong><small className="cell-small">{e.provider}</small></td><td><span className={'event-tag '+(e.kind==='price.decreased'?'down':e.kind==='price.increased'?'up':'neutral')}>{label(e.kind)}</span></td><td><span>{formatEvent(e)}</span></td><td><small>{time(e.created_at)}</small></td></tr>)}

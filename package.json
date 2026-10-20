@@ -20,7 +20,9 @@
     "zod": "^4.1.0",
     "decimal.js": "^10.6.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "@mantine/core": "^8.3.18",
+    "@mantine/hooks": "^8.3.18"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

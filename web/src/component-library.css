@@ -1,0 +1,95 @@
+/* Mantine components: one consistent control system layered over the existing page layout.
+   Do not style internal Mantine elements using global input/button selectors. */
+.layout .mantine-Input-input{
+  background:var(--radar-surface);
+  color:var(--radar-input-text);
+  border:1px solid var(--radar-input-border);
+  border-radius:8px;
+  min-height:42px;
+  height:42px;
+  font:inherit;
+  font-size:13px;
+  line-height:1.4;
+  box-shadow:none;
+  transition:border-color 150ms ease,box-shadow 150ms ease;
+}
+.layout .mantine-Input-input::placeholder{color:var(--radar-text-tertiary);opacity:1}
+.layout .mantine-Input-input:focus-visible{
+  outline:2px solid var(--radar-focus);
+  outline-offset:2px;
+  border-color:var(--radar-focus);
+  box-shadow:none;
+}
+.layout .mantine-TextInput-input{padding-inline:12px}
+.layout .mantine-Select-input,.layout .mantine-NumberInput-input{padding-inline-start:12px;padding-inline-end:38px}
+.layout .mantine-Select-root,.layout .mantine-TextInput-root,.layout .mantine-NumberInput-root{min-width:0}
+.layout .mantine-InputWrapper-label{display:block;margin:0 0 6px;color:var(--radar-text-muted);font-size:12px;font-weight:650}
+.layout .mantine-InputWrapper-required{color:var(--radar-danger)}
+.search-field>.mantine-TextInput-root{flex:1;min-width:0;width:100%}
+.search-field .mantine-Input-input{padding-inline-start:38px;padding-inline-end:46px}
+.sort-field .mantine-Select-root{width:178px}
+.filter-panel>.mantine-Select-root,.filter-panel>.mantine-TextInput-root,.filter-panel>.mantine-NumberInput-root{
+  width:100%;
+  margin-bottom:14px;
+}
+.events-filters>.mantine-Select-root{flex:0 1 196px;width:196px;min-width:148px}
+.subscribe-box>.mantine-Select-root{margin-bottom:10px}
+.subscribe-inline .mantine-Select-root,.subscribe-inline .mantine-NumberInput-root{width:100%}
+.subscribe-inline .mantine-InputWrapper-label{margin-bottom:7px}
+.checks .mantine-Checkbox-root{min-width:0;align-self:start}
+.checks .mantine-Checkbox-label{font-size:12px;line-height:1.5;overflow-wrap:anywhere;color:var(--radar-text-muted);padding-inline-start:8px;cursor:pointer}
+.checks .mantine-Checkbox-input{cursor:pointer}
+.auth-panel form>.mantine-TextInput-root+ .mantine-TextInput-root{margin-top:15px}
+.auth-panel form>.radar-cta{margin-top:20px}
+.watch-editor>.mantine-TextInput-root,.watch-editor>.mantine-NumberInput-root,.watch-editor>.mantine-Select-root{width:100%}
+.watch-editor .mantine-InputWrapper-label{font-size:12px}
+.radar-cta.mantine-Button-root{
+  min-height:42px;
+  border-radius:8px;
+  font-size:13px;
+  font-weight:650;
+  letter-spacing:0;
+  padding-inline:18px;
+  box-shadow:none;
+}
+.radar-cta.mantine-Button-root:not(:disabled):hover{transform:none;box-shadow:none}
+.hero .radar-cta.mantine-Button-root{background:var(--radar-text);color:var(--radar-surface)}
+.hero .radar-cta.mantine-Button-root:hover{filter:brightness(1.14)}
+.pager{justify-content:center;overflow-x:auto}
+.pager .mantine-Pagination-root{max-width:100%}
+.pager .mantine-Pagination-control{
+  color:var(--radar-text-muted);
+  background:var(--radar-surface);
+  border:1px solid var(--radar-border);
+  font-size:12px;
+  font-weight:650;
+  min-width:31px;
+  min-height:31px;
+  padding:0 5px;
+}
+.pager .mantine-Pagination-control[data-active]{background:var(--radar-text);color:var(--radar-surface);border-color:var(--radar-text)}
+.loading-state{display:flex;align-items:center;justify-content:center;gap:10px}
+.radar-alert{margin-bottom:18px;position:relative;padding-inline-end:40px}
+.radar-alert .alert-close{position:absolute;top:9px;right:13px;border:0;background:none;color:inherit;font-size:21px;line-height:1.4;cursor:pointer}
+.modal-description{margin:4px 0 22px;color:var(--mantine-color-dimmed);line-height:1.7;font-size:14px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px}
+.detail-panel{scroll-margin-top:86px}
+html[data-theme="dark"] .hero .radar-cta.mantine-Button-root{background:#e9e4f0;color:#26212d}
+html[data-theme="dark"] .pager .mantine-Pagination-control[data-active]{background:#b9a2f0;color:#21192f;border-color:#b9a2f0}
+@media(max-width:990px){
+  .detail-panel{scroll-margin-top:82px}
+  .events-filters>.mantine-Select-root{flex:1 1 175px;max-width:none}
+}
+@media(max-width:720px){
+  .sort-field .mantine-Select-root{width:min(62vw,210px)}
+  .catalog-grid .detail-panel{scroll-margin-top:54px}
+  .events-filters>.mantine-Select-root{flex:1 1 145px;width:auto}
+}
+@media(max-width:420px){
+  .events-filters>.mantine-Select-root{width:100%;flex:1 1 100%}
+  .pager .mantine-Pagination-control{min-width:27px;padding-inline:3px}
+  .checks .mantine-Checkbox-label{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){
+  .layout .mantine-Input-input,.radar-cta.mantine-Button-root{transition:none}
+}
