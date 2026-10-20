@@ -88,8 +88,8 @@ async function syncCatalog(env:Bindings,kind:'standard'|'image',fetcher:typeof l
    stmts.push(...historyStatements(env,aggregate,m.id,MODEL_PROVIDER,'model',prices,old?storedPrices(old.pricing_json):null,current));
    const snap=crypto.randomUUID();
    if(old){
-    if(modelLifecycleTransition(old.lifecycle_status,old.missing_count,true).event==='model.restored')stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,'model.restored',null,null,null,null,current,snap));
-    for(const delta of modelDeltas(old,state))
+    if(old.model_kind===kind&&modelLifecycleTransition(old.lifecycle_status,old.missing_count,true).event==='model.restored')stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,'model.restored',null,null,null,null,current,snap));
+    for(const delta of (old.model_kind===kind?modelDeltas(old,state):[]))
      stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldValue,delta.newValue,null,current,snap));
     if(kind==='standard')for(const delta of findPriceChanges(storedPrices(old.pricing_json),prices))
      stmts.push(event(env,aggregate,m.id,MODEL_PROVIDER,delta.kind,delta.dimension,delta.oldPrice,delta.newPrice,delta.percent,current,snap));
