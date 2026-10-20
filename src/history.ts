@@ -10,7 +10,7 @@ export function historyStatements(env:Bindings,endpointId:string,modelId:string,
 }
 export function safeCollectionError(input:string|null):string|null{
  if(!input)return null;
- const code=input.match(/(?:OpenRouter API HTTP|Resend HTTP)\\s+(\\d{3})/i);
+ const code=input.match(/(?:OpenRouter API HTTP|Resend HTTP)\s+(\d{3})/i);
  if(code)return 'Upstream HTTP '+code[1];
  if(/timeout|abort/i.test(input))return 'Upstream request timed out';
  if(/empty endpoint/i.test(input))return 'Upstream returned no endpoints';
