@@ -1,0 +1,59 @@
+/* Monitoring features: actual change-point chart, dense comparisons and editable watches. */
+.filter-panel>input,.filter-panel>select{margin-bottom:13px}
+.model-item{display:flex;align-items:stretch;padding:0 7px;gap:4px}
+.model-item:hover{background:#f7f6fa}
+.model-main{display:flex;align-items:center;gap:10px;text-align:left;min-width:0;flex:1;border:0;background:transparent;color:inherit;padding:12px 3px}
+.model-main .model-copy{min-width:0;flex:1}
+.model-main .model-price{min-width:42px}
+.compare-add{border:1px solid transparent;align-self:center;background:#f5f3f8;color:#8772b9;border-radius:7px;width:27px;height:29px;padding:3px;flex:none}
+.compare-add.selected{border-color:#927ccc;background:#eee7fb;color:#6141a4}
+.compare-toolbar{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:1px solid #e8e7ed;color:#65508f;font-size:11px}
+.compare-toolbar button{border:0;background:transparent;color:#6650ae;font-size:11px}
+.collection-summary{margin:14px 0;padding:10px 13px;border:1px solid #ece9f1;border-radius:8px;background:#f9f8fc;font-size:11px;color:#656070;display:flex;flex-direction:column;gap:7px}
+.collection-summary strong{font-size:12px;color:#4b3d69}
+.collection-summary.error{background:#fff9f4;border-color:#f0d5ba}
+.collection-summary.error strong{color:#ac6d2c}
+.collection-summary.stale{background:#fffcf4;border-color:#ece0bb}
+.collection-summary span{line-height:1.6}
+.raw-pricing{margin:15px 0;padding:12px 14px;border:1px solid #ece8f2;border-radius:8px;font-size:11px}
+.raw-pricing summary{cursor:pointer;color:#6c598c}
+.raw-pricing>div{border-top:1px solid #ece8f2;margin-top:12px;padding:12px 0}
+.raw-pricing pre{max-height:200px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#62586c;font-size:11px;line-height:1.7}
+.history-chart{border-top:1px solid #eeebf2;margin-top:25px;padding-top:20px}
+.monitor-head h3{font-size:14px;margin:0}
+.monitor-head p,.history-none,.history-caption{font-size:11px;color:#817b8a;line-height:1.8;margin:7px 0 10px}
+.history-controls{display:flex;align-items:center;gap:8px;margin:12px 0}
+.history-controls select{min-width:0;width:50%}
+.price-chart{width:100%;height:auto;max-height:215px;margin:5px 0 0;overflow:visible}
+.history-caption{margin:10px 0 0}
+.compare-panel{border:1px solid #e7e2ef;border-radius:10px;padding:20px;margin-top:20px;max-width:100%;background:#fcfbfe}
+.compare-header{display:flex;justify-content:space-between;align-items:start;gap:13px;margin-bottom:13px}
+.compare-header h3{font-size:16px;margin:0 0 5px}
+.compare-header p{font-size:11px;color:#857e90;margin:0}
+.compare-header button{border:0;background:transparent;color:#6b50c9}
+.compare-panel table{border-collapse:collapse;min-width:560px;width:100%;font-size:11px}
+.compare-panel td,.compare-panel th{padding:12px;border-bottom:1px solid #eae6f0;text-align:left;font-variant-numeric:tabular-nums}
+.compare-panel th{white-space:normal}
+.compare-remove{margin-left:6px;border:0;color:#b35c63;background:transparent}
+.event-export-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 16px;font-size:11px}
+.event-export-bar label{display:flex;align-items:center;gap:6px;color:#77717f}
+.event-export-bar input{width:144px;min-height:34px;font-size:11px}
+.event-export-bar a{color:#6c4eb9;border:1px solid #e0dbe9;padding:9px 12px;border-radius:7px}
+.event-export-bar a:hover{background:#f4f0fb}
+.event-export-bar small{color:#928e98}
+.events-filters select{min-width:128px;max-width:195px}
+.watch-topline,.watch-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.watch-actions{margin-top:10px}
+.watch-actions button{border:1px solid #e2ddea;padding:8px 11px;background:#fff;color:#67528d;border-radius:7px;font-size:11px}
+.watch-actions .primary{color:#fff;background:#29252f;border-color:#29252f}
+.watch-actions .delete{color:#a64252;border-color:#edced2}
+.watch-card.is-paused{opacity:.75}
+.watch-card.is-paused h3{color:#7b7683}
+.watch-delivery{display:flex;flex-direction:column;gap:5px;padding-top:13px;font-size:11px;color:#827c8a}
+.watch-editor{border-top:1px solid #e8e2ef;padding-top:15px;margin-top:17px;display:flex;flex-direction:column;gap:12px}
+.watch-editor>label{font-size:11px;color:#5a5263}
+.watch-editor input,.watch-editor select{margin-top:5px}
+.watch-editor summary{cursor:pointer;font-size:11px;color:#70617c}
+.watch-editor .checks{margin-top:9px}
+@media(max-width:1180px){.filter-panel{padding-right:12px}.filter-panel>input{width:100%}}
+@media(max-width:700px){.history-controls{flex-wrap:wrap}.events-filters{flex-wrap:wrap}.events-filters select{width:45%;max-width:none}.compare-panel{padding:13px}}
