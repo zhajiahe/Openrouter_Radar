@@ -304,31 +304,48 @@ function App(){
         <option value="">All providers</option>
         {providers.map(p=><option key={p.provider} value={p.provider}>{p.provider} · {p.model_count}</option>)}
        </select>
-       <button className="clear-filters" disabled={!providerFilter&&!search&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');}}>清除筛选 ↺</button>
+       <label htmlFor="author-filter">模型作者</label><input id="author-filter" placeholder="e.g. openai" value={authorFilter} onChange={e=>{setAuthorFilter(e.target.value);setPage(1);}}/>
+       <label htmlFor="modality-filter">输入模态</label><select id="modality-filter" value={modalityFilter} onChange={e=>{setModalityFilter(e.target.value);setPage(1);}}><option value="">全部模态</option><option value="text">Text</option><option value="image">Image</option><option value="audio">Audio</option><option value="video">Video</option></select>
+       <label htmlFor="capability-filter">能力参数</label><select id="capability-filter" value={capabilityFilter} onChange={e=>{setCapabilityFilter(e.target.value);setPage(1);}}><option value="">全部能力</option><option value="tools">Tools</option><option value="reasoning">Reasoning</option><option value="response_format">JSON / Structured</option></select>
+       <label htmlFor="min-context">最小上下文 Tokens</label><input id="min-context" type="number" min="0" step="1024" placeholder="不限" value={minContext} onChange={e=>{setMinContext(e.target.value);setPage(1);}}/>
+       <label htmlFor="max-price">最高输入价 USD / 1M Tokens</label><input id="max-price" type="number" min="0" step=".001" placeholder="不限" value={maxInput} onChange={e=>{setMaxInput(e.target.value);setPage(1);}}/>
+       <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}>清除筛选 ↺</button>
        <div className="filter-divider"/>
        <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 ↗</a></div>
       </aside>
       <div className="panel models-panel">
        <div className="panel-title"><span>All models <span className="muted">({modelTotal.toLocaleString()})</span></span><span className="muted">USD / 1M tokens</span></div>
-       <div className="model-list" aria-busy={modelLoading}>{models.map(m=><button key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')} aria-pressed={selected?.id===m.id} onClick={()=>void inspect(m)}>
-        <span className="model-avatar" aria-hidden="true">{m.id.split('/')[0].slice(0,2).toUpperCase()}</span>
-        <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{m.context_length?Math.round(m.context_length/1024)+'K ctx':'Context unknown'} · {m.provider_count||0} providers</span></span>
-        <span className="model-price">{m.lowest_input!==null&&m.lowest_input!==undefined?million(String(m.lowest_input)):'—'}<small>input / M</small></span>
-       </button>)}
+       <div className="model-list" aria-busy={modelLoading}>{models.map(m=><div key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')}>
+        <button className="model-main" aria-pressed={selected?.id===m.id} onClick={()=>void inspect(m)}>
+         <span className="model-avatar" aria-hidden="true">{m.id.split('/')[0].slice(0,2).toUpperCase()}</span>
+         <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{m.context_length?Math.round(m.context_length/1024)+'K ctx':'Context unknown'} · {m.provider_count||0} providers</span></span>
+         <span className="model-price">{m.lowest_input!==null&&m.lowest_input!==undefined?million(String(m.lowest_input)):'—'}<small>input / M</small></span>
+        </button>
+        <button className={'compare-add '+(compareIds.includes(m.id)?'selected':'')} onClick={()=>toggleCompare(m.id)} aria-pressed={compareIds.includes(m.id)} aria-label={compareIds.includes(m.id)?'从对比移除 '+m.name:'加入模型对比 '+m.name}>{compareIds.includes(m.id)?'✓':'+'}</button>
+       </div>)}
        {modelLoading&&<div className="empty" role="status">正在加载模型…</div>}
        {!modelLoading&&!models.length&&<div className="empty">没有匹配的模型。清除筛选，或等待下一次采集。</div>}</div>
+       {compareIds.length>0&&<div className="compare-toolbar"><span>已选 {compareIds.length}/3 个模型</span><button onClick={()=>setCompareIds([])}>清空</button></div>}
        <div className="pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Previous</button><span>{page} / {Math.max(1,Math.ceil(modelTotal/30))}</span><button disabled={page*30>=modelTotal} onClick={()=>setPage(p=>p+1)}>Next →</button></div>
       </div>
       <div className="panel detail-panel">{selected?<>
        <div className="panel-title"><span>MODEL DETAILS</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}>复制链接 ↗</button></div>
        <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code></div></div>
-       <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{endpoints.filter(e=>e.source==='provider'&&e.status==='active').length}</strong> Active endpoints</span></div>
+       <div className="detail-facts"><span><strong>{selected.context_length?.toLocaleString()||'—'}</strong> Context tokens</span><span><strong>{collection?.active_endpoints??0}</strong> Active endpoints</span></div>
+       <div className={'collection-summary '+(collection?.status||'never')} role="status">
+        <strong>采集状态：{collection?.status==='fresh'?'近期成功':collection?.status==='error'?'采集失败':collection?.status==='stale'?'数据可能过期':'尚未成功采集'}</strong>
+        <span>上次成功：{collection?.last_success?time(collection.last_success):'无'} · 上次尝试：{collection?.last_attempt?time(collection.last_attempt):'无'}</span>
+        {collection?.last_error&&<small>{collection.last_error} · 已保留上次有效报价</small>}
+        {!!collection?.missing_endpoints&&<small>{collection.missing_endpoints} 个历史端点已标记下线</small>}
+       </div>
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
        <div className="detail-section-head"><h3>Provider pricing</h3><small>USD / 1M tokens · 来自最近一次采集</small></div>
        <div className="scroll-x"><table><thead><tr><th>Provider</th><th>Input</th><th>Output</th><th>检查时间</th></tr></thead><tbody>
         {endpoints.filter(ep=>ep.source==='provider').map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><small className="cell-small">{ep.status==='missing'?'已下线':ep.tag||'Active'}</small></td><td className="num">{endpointPrice(ep.input_price)}</td><td className="num">{endpointPrice(ep.output_price)}</td><td><small>{ep.checked_at?time(ep.checked_at):'待采集'}</small></td></tr>)}
        </tbody></table>{!endpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
+       {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>查看非 Token 计价、缓存和动态覆盖规则</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
+       <PriceHistory modelId={selected.id} providers={[...new Set(endpoints.filter(e=>e.source==='provider').map(e=>e.provider))]}/>
        <div className="detail-section-head"><h3>Recent changes</h3><small>仅记录首次快照后的实际变化</small></div>
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{label(ev.kind)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
@@ -341,12 +358,17 @@ function App(){
        </div>
       </>:<div className="selection-empty"><span>▧</span><h3>选择一个模型</h3><p>对比 Provider 报价、查看真实变化、创建监控。</p><small>点击左侧模型查看详情</small></div>}</div>
      </div>
+     {compareIds.length>=2&&<CompareModels ids={compareIds} onRemove={id=>toggleCompare(id)} onClose={()=>setCompareIds([])}/>}
     </>}
     {view==='events'&&<>
      <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml">RSS ↗</a></div>
      <div className="events-filters"><div className="search-field"><span aria-hidden="true">⌕</span><input aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
       <select aria-label="事件类型" value={eventKind} onChange={e=>{setEventKind(e.target.value);setEventPage(1);}}><option value="">全部事件</option>{EVENTS.map(([id,text])=><option key={id} value={id}>{text}</option>)}</select>
+      <select aria-label="Provider 筛选" value={eventProvider} onChange={e=>{setEventProvider(e.target.value);setEventPage(1);}}><option value="">所有 Provider</option>{providers.map(p=><option key={p.provider} value={p.provider}>{p.provider}</option>)}</select>
      </div>
+     <div className="event-export-bar"><label>从 <input aria-label="开始日期" type="date" value={eventStart} onChange={e=>{setEventStart(e.target.value);setEventPage(1);}}/></label>
+      <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
+      <a href={exportUrl('csv')}>CSV ↧</a><a href={exportUrl('json')}>JSON ↧</a><small>每次导出最多 1,000 条事件</small></div>
      <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
      <div className="pager events-pager"><button disabled={eventPage<=1} onClick={()=>setEventPage(p=>p-1)}>← Previous</button><span>{eventPage} / {Math.max(1,Math.ceil(eventTotal/30))}</span><button disabled={eventPage*30>=eventTotal} onClick={()=>setEventPage(p=>p+1)}>Next →</button></div>
     </>}
