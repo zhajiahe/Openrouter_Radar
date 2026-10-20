@@ -1,6 +1,11 @@
 export type Bindings = {
  DB: D1Database;
  SCHEDULER: DurableObjectNamespace;
+ AUTH_RATE_LIMITER: RateLimit;
+ IDENTITY_RATE_LIMITER: RateLimit;
+ API_RATE_LIMITER: RateLimit;
+ EXPENSIVE_RATE_LIMITER: RateLimit;
+ MUTATION_RATE_LIMITER: RateLimit;
  ASSETS?: Fetcher;
  APP_ORIGIN: string;
  MAIL_FROM: string;

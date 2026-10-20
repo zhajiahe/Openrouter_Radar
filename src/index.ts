@@ -9,22 +9,48 @@ import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
 import { PRICE_FIELDS } from './pricing';
 import { publicCacheSeconds } from './public-cache';
+import { edgePermit, limitClass, queryWithinBudget, requiresJson, sameOriginMutation, trustedClientIp, withinBodyLimit } from './security';
 import {eventTitle} from './event-labels';
 import {summarizeProviderPriceStability,type ProviderEndpoint,type PriceObservation} from './provider-stability';
 export { RadarScheduler } from './scheduler';
 
 const app=new Hono<AppEnv>();
 app.use('*',secureHeaders());
-app.use('/api/*',async (c,next)=>{
- // SameSite cookies plus same-origin checks protect authenticated mutations against CSRF.
- const method=c.req.method.toUpperCase(),origin=c.req.header('Origin');
- if(!['GET','HEAD','OPTIONS'].includes(method) && origin){
+async function protectApi(c:import('hono').Context<AppEnv>,next:()=>Promise<void>):Promise<void>{
+ const url=new URL(c.req.url),path=url.pathname,method=c.req.method.toUpperCase();
+ if(!queryWithinBudget(url.search)){c.res=c.json({error:'Query is too large'},414);return;}
+ const policy=limitClass(path,method);
+ if(policy){
+  const ip=trustedClientIp(c.req.header('cf-connecting-ip'));
+  try{
+   if(!await edgePermit(c.env,policy,path+':'+ip)){
+    c.header('Retry-After','60');c.header('Cache-Control','no-store');
+    c.res=c.json({error:'Too many requests'},429);return;
+   }
+  }catch(error){
+   console.error('Edge rate limiter unavailable',error);
+   c.res=c.json({error:'Request protection unavailable'},503);return;
+  }
+ }
+ if(!['GET','HEAD','OPTIONS'].includes(method)){
   const configured=new URL(c.env.APP_ORIGIN).origin;
-  const localVite=configured==='http://localhost:8787'&&origin==='http://localhost:5173';
-  if(origin!==configured&&!localVite)return c.json({error:'Cross-origin request rejected'},403);
+  const localVite=configured==='http://localhost:8787'&&c.req.header('origin')==='http://localhost:5173';
+  if(!localVite&&!sameOriginMutation(c.req.header('origin'),c.req.header('referer'),configured,!!c.req.header('cookie'),c.req.header('sec-fetch-site'))){
+   c.res=c.json({error:'Cross-origin request rejected'},403);return;
+  }
+  if(requiresJson(path,method)){
+   if(!/^application\/json(?:\s*;|$)/i.test(c.req.header('content-type')||'')){
+    c.res=c.json({error:'JSON content type required'},415);return;
+   }
+   if(!await withinBodyLimit(c.req.raw)){
+    c.res=c.json({error:'Request body too large'},413);return;
+   }
+  }
  }
  await next();
-});
+}
+app.use('/api/*',protectApi);
+app.use('/feed.xml',protectApi);
 // Cache only explicitly allowlisted public GET routes; never share auth/session
 // or subscription responses. Edge caching requires no extra D1/KV writes.
 app.use('/api/*',async(c,next)=>{

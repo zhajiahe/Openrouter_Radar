@@ -28,6 +28,7 @@ npx wrangler d1 create openrouter-radar
 - `MAIL_FROM`：Resend 已验证域名的发信身份，例如 `Radar <radar@example.com>`。
 - `OPEN_SIGNUP`：默认 `true`，公开注册。如不希望开放则设为 `false`。
 - `MAX_MODELS_PER_TICK`：单次定时执行的全量 Provider 模型批次，1–25，默认 15；不随订阅数量变化。
+- `ratelimits`：Wrangler 配置中包含 5 组 Workers 原生边缘限流（登录等认证请求、账号身份、公开查询、昂贵查询、写入操作），各自使用独立数字 namespace。部署多个实例时需确保在相同 Cloudflare 账号内不要意外共享 namespace。
 
 机密配置（千万不要放在 `vars` 或提交仓库）：
 
@@ -103,3 +104,11 @@ npm run dev
 5. 用自己的邮箱执行注册、验证、登录、订阅并确认收到测试告警后，再对外公开推广。
 
 公开实例建议启用 Turnstile/WAF、防滥用额度及发信上限。普通订阅者始终无需任何 OpenRouter API Key。
+
+## 防爆破与恶意访问
+
+所有公开 API、RSS、登录与订阅操作都先检查原生 Workers Rate Limiting，再访问 D1。登录、注册、密码重置额外按 SHA-256 摘要的邮箱或重置 Token 限流；密码找回邮件最多两封/小时/已验证地址，阻断后不继续写入 D1。请求超出本地限流将返回 429（附 Retry-After: 60）；限流绑定丢失时返回 503，不允许静默放行。请求体必须是 JSON 且不超过 8 KiB；携带登录 Cookie 的修改操作必须出示同源 Origin 或 Referer。
+
+Workers 限流是**每个 Cloudflare 数据中心本地、最终一致**的，不能完全抵御跨地区分布式攻击，也不会阻止请求进入 Worker 本身。对公开实例建议绑定 Cloudflare 代理的自定义域名，在域名所在 Zone 上启用 WAF 托管规则、Bot 保护，并为 `/api/auth/*` 及高负载 `/api/*` 配置挑战/限流规则。当前 `workers.dev` 域名不应被视为已经具有此类 Zone WAF。
+
+静态资产在 `web/public/_headers` 增加 CSP、X-Frame-Options、nosniff 等响应头。身份验证、强 CSP、边缘限流和 WAF 是多层防护；开启公开注册前仍推荐 Cloudflare Turnstile 和告警。见 [Cloudflare Workers Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) 与 [Static Assets headers](https://developers.cloudflare.com/workers/static-assets/headers/)。
