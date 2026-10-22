@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OpenRouter Radar">
- <rect width="64" height="64" rx="15" fill="#25232b"/>
- <g fill="none" stroke="#f5f3fa" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="32" cy="32" r="21"/>
-  <path d="M32 32V11M32 32l17.6-12.5"/>
-  <path d="M32 19a13 13 0 1 0 13 13" opacity=".65"/>
- </g>
- <circle cx="43.5" cy="23.7" r="4.5" fill="#d4f2a9"/>
- <circle cx="32" cy="32" r="3.5" fill="#f5f3fa"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">OpenRouter Radar</title>
+  <rect width="64" height="64" rx="15" fill="#25232b"/>
+  <g fill="none" stroke="#f6f4fa" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="32" cy="32" r="20.2"/>
+    <path d="M32 32V11.8M32 32l15.5-12"/>
+    <path d="M32 20.5a11.5 11.5 0 1 0 11.5 11.5" opacity=".62"/>
+  </g>
+  <circle cx="43.9" cy="22.7" r="4.9" fill="#d4f2a9"/>
+  <circle cx="32" cy="32" r="3.3" fill="#f6f4fa"/>
 </svg>

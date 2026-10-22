@@ -8,3 +8,11 @@ web/dist
 !.env.example
 .DS_Store
 *.log
+
+# Generated brand PNG/ICO files (recreated before build and visual QA)
+web/public/favicon.ico
+web/public/favicon-32.png
+web/public/apple-touch-icon.png
+web/public/icon-192.png
+web/public/icon-512.png
+web/public/social-card.png

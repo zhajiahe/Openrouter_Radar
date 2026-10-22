@@ -45,7 +45,19 @@ for(const width of widths){
     await expect(footer).toContainText('模型和 Provider 的价格、能力与端点变化，全部集中在一个地方。');
     await expect(page.locator('.hero, .overview-intro')).toHaveCount(0);
     await expect(page.getByRole('button',{name:'探索模型目录'})).toHaveCount(0);
-    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href','/favicon.svg');
+    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute('href','/favicon.svg');
+    await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href','/apple-touch-icon.png');
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href','/site.webmanifest');
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content',/^https:\/\/[^ ]+\/social-card\.png$/);
+    const manifest=await page.request.get('/site.webmanifest');
+    expect(manifest.ok()).toBeTruthy();
+    const appManifest=await manifest.json() as {icons:{src:string}[]};
+    expect(appManifest.icons.map(icon=>icon.src)).toEqual(expect.arrayContaining(['/favicon.svg','/icon-192.png','/icon-512.png']));
+    for(const asset of ['/favicon.ico','/favicon-32.png','/apple-touch-icon.png','/icon-192.png','/icon-512.png','/social-card.png']){
+     const response=await page.request.get(asset);
+     expect(response.ok(),asset+' must be reachable').toBeTruthy();
+     expect((await response.body()).subarray(0,4).toString('hex'),asset+' must be binary').toBe(asset.endsWith('.ico')?'00000100':'89504e47');
+    }
     const favicon=await page.request.get('/favicon.svg');
     expect(favicon.ok()).toBeTruthy();
     expect(await favicon.text()).toContain('<svg');
@@ -57,6 +69,7 @@ for(const width of widths){
    const theme=page.getByRole('button',{name:'切换深色/浅色主题'});
    await theme.click();
    await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+   if(!baseline)await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content','#15141a');
    await checkDocument(page,width);
    await capture(page,`${width}/overview-dark.png`);
    if(!baseline)expect(errors,'Uncaught browser errors').toEqual([]);
