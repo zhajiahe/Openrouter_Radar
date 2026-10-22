@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "build": "vite build --config web/vite.config.ts",
+    "build": "node scripts/build-brand-assets.mjs && vite build --config web/vite.config.ts",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
@@ -14,7 +14,7 @@
     "lint": "eslint src tests web/src web/vite.config.ts",
     "format": "prettier --write src tests web/src web/vite.config.ts README.md CONTRIBUTING.md docs .github package.json eslint.config.mjs",
     "format:check": "prettier --check eslint.config.mjs .prettierrc.json web/src/tokens.css docs/ui-design.md CONTRIBUTING.md .github/pull_request_template.md",
-    "test:visual": "playwright test --config playwright.config.ts",
+    "test:visual": "node scripts/build-brand-assets.mjs && playwright test --config playwright.config.ts",
     "compare:visual": "node e2e/compare-screenshots.mjs"
   },
   "dependencies": {
@@ -45,6 +45,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "@playwright/test": "^1.56.1",
     "pixelmatch": "^6.0.0",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "@resvg/resvg-js": "2.6.2"
   }
 }

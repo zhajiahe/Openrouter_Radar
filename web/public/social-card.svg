@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+ <title id="title">OpenRouter Radar</title>
+ <desc id="desc">Model prices, under your radar.</desc>
+ <rect width="1200" height="630" fill="#201e28"/>
+ <rect x="36" y="36" width="1128" height="558" rx="28" fill="#292632" stroke="#544b67" stroke-width="2"/>
+ <circle cx="1030" cy="310" r="270" fill="none" stroke="#4f436b" stroke-width="2" opacity=".5"/>
+ <circle cx="1030" cy="310" r="194" fill="none" stroke="#4f436b" stroke-width="2" opacity=".7"/>
+ <circle cx="1030" cy="310" r="120" fill="none" stroke="#62567f" stroke-width="2" opacity=".7"/>
+ <path d="M1030 310V40M1030 310l225-177" stroke="#d4f2a9" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+ <circle cx="1203" cy="174" r="12" fill="#d4f2a9"/>
+ <rect x="105" y="105" width="94" height="94" rx="21" fill="#25232b" stroke="#70657e" stroke-width="2"/>
+ <circle cx="152" cy="152" r="32" fill="none" stroke="#f6f4fa" stroke-width="5"/>
+ <path d="M152 152v-32M152 152l23-17" fill="none" stroke="#f6f4fa" stroke-width="5" stroke-linecap="round"/>
+ <circle cx="170" cy="138" r="7" fill="#d4f2a9"/>
+ <circle cx="152" cy="152" r="5" fill="#f6f4fa"/>
+ <g font-family="DejaVu Sans,Arial,sans-serif">
+  <text x="235" y="168" font-size="40" font-weight="700" fill="#f7f5fa">OpenRouter Radar</text>
+  <text x="105" y="328" font-size="59" font-weight="700" fill="#f7f5fa">Model prices,</text>
+  <text x="105" y="402" font-size="59" font-weight="700" fill="#d4f2a9">under your radar.</text>
+  <text x="107" y="488" font-size="25" fill="#c7c1cf">Models  /  Providers  /  Changes  /  Alerts</text>
+ </g>
+</svg>

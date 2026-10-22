@@ -39,6 +39,8 @@ jobs:
           done
 
       - name: Install, typecheck, test and build
+        env:
+          VITE_SITE_ORIGIN: ${{ vars.APP_ORIGIN }}
         run: |
           npm install
           npm run check
@@ -142,7 +144,15 @@ jobs:
           curl -fLsS --retry 2 --connect-timeout 10 --max-time 30 -o /tmp/radar-style.css "$ORIGIN$CSS_PATH"
           test -s /tmp/radar-app.js
           test -s /tmp/radar-style.css
+          # Guard against SPA fallback HTML being served for missing brand assets.
+          for image in favicon.ico favicon-32.png apple-touch-icon.png icon-192.png icon-512.png social-card.png; do
+            curl -fLsS --retry 2 --connect-timeout 10 --max-time 30 -o "/tmp/$image" "$ORIGIN/$image"
+            ASSET="/tmp/$image" node --input-type=module -e "import fs from 'node:fs'; const p=process.env.ASSET; const data=fs.readFileSync(p); const expected=p.endsWith('.ico')?'00000100':'89504e47'; if(data.subarray(0,4).toString('hex')!==expected)process.exit(1)"
+          done
+          curl -fLsS --retry 2 --connect-timeout 10 --max-time 30 -o /tmp/radar-manifest.json "$ORIGIN/site.webmanifest"
+          node --input-type=module -e "import fs from 'node:fs'; const m=JSON.parse(fs.readFileSync('/tmp/radar-manifest.json')); if(!m.icons?.some(i=>i.sizes==='512x512'))process.exit(1)"
           echo "React homepage, JavaScript and stylesheet are publicly accessible"
+          echo "Browser icons, mobile icons, manifest and social image verified"
           echo "Frontend: $ORIGIN/" >> "$GITHUB_STEP_SUMMARY"
           echo "Assets: JS and CSS fetched successfully" >> "$GITHUB_STEP_SUMMARY"
 

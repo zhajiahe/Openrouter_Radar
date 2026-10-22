@@ -66,7 +66,7 @@ async function api<T>(path:string,options?:RequestInit):Promise<T>{
 function App(){
  const [view,setView]=useState('overview');
  const [theme,setTheme]=useState<'light'|'dark'>(()=>localStorage.getItem('radar-theme')==='dark'?'dark':'light');
- useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('radar-theme',theme);},[theme]);
+ useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('radar-theme',theme);document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#15141a':'#ffffff');},[theme]);
  useEffect(()=>{document.documentElement.lang='zh-CN';},[]);
  const [user,setUser]=useState<{id:string;email:string}|null>(null);
  const [authMode,setAuthMode]=useState('login');
