@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { publicCacheSeconds } from '../src/public-cache';
-import { refreshCatalog } from '../src/collector';
+import { refreshCatalog, runCollection, DAILY_PROVIDER_SCAN_LIMIT } from '../src/collector';
 import type { Bindings } from '../src/types';
 
 const read=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -51,4 +51,32 @@ test('unchanged catalog does not rewrite models, aggregate endpoints or jobs',as
  const checked=await refreshCatalog(env,async()=>[{id:'demo/a',name:'A',pricing:modelsRaw}]);
  assert.equal(checked,1);
  assert.deepEqual(batches,[]);
+});
+
+test('daily provider quota is enforced in the singleton alarm before running scans',()=>{
+ const worker=read('src/scheduler.ts');
+ const collector=read('src/collector.ts');
+ const config=JSON.parse(read('wrangler.jsonc'));
+ assert.equal(DAILY_PROVIDER_SCAN_LIMIT,4_000);
+ assert.equal(config.vars.MAX_MODELS_PER_TICK,'6');
+ assert.equal(config.vars.COLLECTION_PAUSED,'false');
+ assert.deepEqual(Object.keys(config.vars).filter(key=>key.startsWith('FRESH_START_')),[]);
+ assert.match(worker,/providerScanBudget/);
+ assert.match(worker,/deleteAlarm\(\)/);
+ assert.match(collector,/if\(attempted&&reserveScans\)await reserveScans\(attempted\)/);
+});
+
+test('an exhausted daily quota skips Provider job selection but can replay events',async()=>{
+ const sqlCalls:string[]=[];
+ const db={
+  prepare(sql:string){sqlCalls.push(sql);return {
+   bind(){return this;},
+   async run(){return {meta:{changes:0}};},
+   async all(){return {results:[]};}
+  };}
+ } as unknown as D1Database;
+ const env={DB:db} as unknown as Bindings;
+ assert.equal(await runCollection(env,0),0);
+ assert.ok(sqlCalls.some(sql=>sql.includes('FROM price_events')));
+ assert.ok(!sqlCalls.some(sql=>sql.includes('FROM collection_jobs j')));
 });
