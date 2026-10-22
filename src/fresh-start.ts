@@ -1,7 +1,7 @@
 import type { Bindings } from './types';
 
 export type FreshStartPlan = { id: string; purgeAt: number; startAt: number };
-export type FreshStartSettings = Pick<Bindings, 'APP_ORIGIN' | 'FRESH_START_INSTANCE' | 'FRESH_START_ID' | 'FRESH_START_PURGE_AT' | 'FRESH_START_START_AT'>;
+export type FreshStartSettings = Pick<Bindings, 'APP_ORIGIN' | 'FRESH_START_INSTANCE' | 'FRESH_START_ID' | 'FRESH_START_PURGE_AT' | 'FRESH_START_START_AT' | 'ALLOW_DESTRUCTIVE_FRESH_START'>;
 
 /**
  * This opt-in operation is deliberately bound to one instance and expires
@@ -9,6 +9,8 @@ export type FreshStartSettings = Pick<Bindings, 'APP_ORIGIN' | 'FRESH_START_INST
  * automatically destroy their data.
  */
 export function readFreshStartPlan(env:FreshStartSettings,clock=Date.now()):FreshStartPlan|null {
+ // Never execute a destructive reset merely because stale timestamp variables remain.
+ if (env.ALLOW_DESTRUCTIVE_FRESH_START !== 'true') return null;
  if (!env.FRESH_START_ID || !env.FRESH_START_INSTANCE || env.APP_ORIGIN !== env.FRESH_START_INSTANCE) return null;
  const purgeAt = Date.parse(env.FRESH_START_PURGE_AT ?? '');
  const startAt = Date.parse(env.FRESH_START_START_AT ?? '');

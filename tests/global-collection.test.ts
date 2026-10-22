@@ -9,12 +9,12 @@ const source=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'ut
 test('hourly global scanner stays within per-invocation budget and ignores subscriptions',()=>{
  assert.equal(CATALOG_INTERVAL_SECONDS,3600);
  assert.equal(PROVIDER_INTERVAL_SECONDS,3600);
- assert.match(source('src/scheduler.ts'),/ALARM_INTERVAL_MS=60_000/);
- assert.equal(modelsPerTick(),15);
- assert.equal(modelsPerTick('10'),10);
- assert.equal(modelsPerTick('999'),25);
- assert.equal(modelsPerTick('-1'),15);
- assert.equal(modelsPerTick('bad number'),15);
+ assert.match(source('src/scheduler.ts'),/ALARM_INTERVAL_MS=120_000/);
+ assert.equal(modelsPerTick(),6);
+ assert.equal(modelsPerTick('5'),5);
+ assert.equal(modelsPerTick('999'),6);
+ assert.equal(modelsPerTick('-1'),6);
+ assert.equal(modelsPerTick('bad number'),6);
  const collector=source('src/collector.ts');
  assert.match(collector,/FROM collection_jobs j JOIN models m/);
  assert.doesNotMatch(collector,/collection_jobs j JOIN subscriptions/);

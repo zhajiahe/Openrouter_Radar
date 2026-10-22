@@ -6,6 +6,7 @@ const settings = {
  APP_ORIGIN: 'https://radar.example',
  FRESH_START_INSTANCE: 'https://radar.example',
  FRESH_START_ID: 'fresh-start-test',
+ ALLOW_DESTRUCTIVE_FRESH_START: 'true',
  FRESH_START_PURGE_AT: '2026-10-21T00:10:00Z',
  FRESH_START_START_AT: '2026-10-21T01:00:00Z',
 };
@@ -17,7 +18,9 @@ test('one-time restart pauses through cleanup and starts exactly at 10:00 JST',(
  assert.equal(new Date(plan!.startAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false}),'10:00');
 });
 
-test('reset cannot silently run in another self-hosted instance or long after the cutoff',()=>{
+test('reset requires a separate destructive opt-in and cannot run on another origin or after the cutoff',()=>{
+ assert.equal(readFreshStartPlan({...settings,ALLOW_DESTRUCTIVE_FRESH_START:undefined}),null);
+ assert.equal(readFreshStartPlan({...settings,ALLOW_DESTRUCTIVE_FRESH_START:'false'}),null);
  assert.equal(readFreshStartPlan({...settings,APP_ORIGIN:'https://different.example'}),null);
  assert.equal(readFreshStartPlan(settings,Date.parse('2026-10-23T01:00:00Z')),null);
  assert.equal(readFreshStartPlan({...settings,FRESH_START_ID:undefined}),null);

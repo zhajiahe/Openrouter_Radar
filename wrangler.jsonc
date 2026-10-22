@@ -43,11 +43,8 @@
     "APP_ORIGIN": "https://openrouter-radar.zhajiahe1994.workers.dev",
     "MAIL_FROM": "Radar <notifications@example.com>",
     "OPEN_SIGNUP": "false",
-    "MAX_MODELS_PER_TICK": "15",
-    "FRESH_START_ID": "openrouter-radar-20261021-jst",
-    "FRESH_START_INSTANCE": "https://openrouter-radar.zhajiahe1994.workers.dev",
-    "FRESH_START_PURGE_AT": "2026-10-21T00:10:00Z",
-    "FRESH_START_START_AT": "2026-10-21T01:00:00Z"
+    "MAX_MODELS_PER_TICK": "6",
+    "COLLECTION_PAUSED": "false"
   },
   "ratelimits": [
     {

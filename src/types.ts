@@ -14,6 +14,10 @@ export type Bindings = {
  OPENROUTER_API_KEY?: string;
  OPEN_SIGNUP?: string;
  MAX_MODELS_PER_TICK?: string;
+ /** Pauses collection and cancels the persistent DO alarm without deleting any data. */
+ COLLECTION_PAUSED?: string;
+ /** Extra safety gate; always absent from normal production configuration. */
+ ALLOW_DESTRUCTIVE_FRESH_START?: string;
  /** One-time opt-in reset, scoped to a specific production origin. */
  FRESH_START_ID?: string;
  FRESH_START_INSTANCE?: string;

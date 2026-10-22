@@ -27,7 +27,8 @@ npx wrangler d1 create openrouter-radar
 - `APP_ORIGIN`：`https://radar.example.com`（必须和生产域名一致，验证与重置邮件都使用它）。
 - `MAIL_FROM`：Resend 已验证域名的发信身份，例如 `Radar <radar@example.com>`。
 - `OPEN_SIGNUP`：默认 `true`，公开注册。如不希望开放则设为 `false`。
-- `MAX_MODELS_PER_TICK`：单次定时执行的全量 Provider 模型批次，1–25，默认 15；不随订阅数量变化。
+- `MAX_MODELS_PER_TICK`：单次定时执行的全量 Provider 模型批次，1–6，默认 6；不随订阅数量变化。单例 DO 每 UTC 日最多保留 4,000 次模型扫描的尝试额度。
+- `COLLECTION_PAUSED`：设置为 `true` 则取消 DO Alarm 并暂停扫描，不删除 D1 数据；恢复成 `false` 并访问一次 `/api/health` 重新启动。生产环境不能启用 `ALLOW_DESTRUCTIVE_FRESH_START`，不应保留旧的 `FRESH_START_*` 配置。
 - `ratelimits`：Wrangler 配置中包含 5 组 Workers 原生边缘限流（登录等认证请求、账号身份、公开查询、昂贵查询、写入操作），各自使用独立数字 namespace。部署多个实例时需确保在相同 Cloudflare 账号内不要意外共享 namespace。
 
 机密配置（千万不要放在 `vars` 或提交仓库）：
@@ -56,7 +57,7 @@ npm run deploy
 - `GET /feed.xml`：RSS。
 - Cloudflare Workers 日志用于查看 Durable Object Alarm 或 Resend 错误；不应输出用户密码或认证 Token。
 
-> 注意：Workers Free 有 CPU、请求和 D1 行读写限制。全量扫描的上游 API 调用量约为每小时模型数 + 1，与订阅用户数无关。默认每分钟最多 15 个 Provider 请求，理论扫描容量约 900 模型/小时；模型更多、响应慢或限流时会出现扫描延迟。Cloudflare 免费计划每次调用最多 50 个外部子请求；达到上游限制时不会删除已有价格，也不会报错成“端点下线”。提升并发前请核实 Cloudflare 当前配额。
+> 注意：Workers Free 有 CPU、请求和 D1 行读写限制。全量扫描的上游 API 调用量约为每小时模型数 + 1，与订阅用户数无关。每 2 分钟最多 6 个 Provider 扫描，额外受每日 4,000 次尝试限制，理论扫描容量最高约 180 模型/小时；模型更多、响应慢或限流时会出现扫描延迟。Cloudflare 免费计划每次调用最多 50 个外部子请求；达到上游限制时不会删除已有价格，也不会报错成“端点下线”。提升并发前请核实 Cloudflare 当前配额。
 
 ## 本地运行
 
@@ -89,7 +90,7 @@ npm run dev
 
 - 实例 URL：`https://openrouter-radar.zhajiahe1994.workers.dev`
 - D1 名称：`openrouter-radar`；数据库已创建且已执行 `0001_initial.sql`
-- 调度：`RadarScheduler` Durable Object Alarm，每 1 分钟；不占用 Workers Free 的 Cron Trigger 名额
+- 调度：`RadarScheduler` Durable Object Alarm，每 2 分钟；不占用 Workers Free 的 Cron Trigger 名额
 - GitHub Actions 已接管 `main` 的自动部署；Cloudflare Builds 不再触发部署
 - **目前 `OPEN_SIGNUP=false`**：还未配置实例邮件服务，防止用户注册后无法验证邮箱；不应声称公开注册已可用
 

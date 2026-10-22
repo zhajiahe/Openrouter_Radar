@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Bindings } from './types';
-import { runCollection, runHousekeeping } from './collector';
+import { runCollection, runHousekeeping, DAILY_PROVIDER_SCAN_LIMIT } from './collector';
 import { deliverPending } from './delivery';
 import { readFreshStartPlan, clearCollectionHistory } from './fresh-start';
 
@@ -8,7 +8,7 @@ import { readFreshStartPlan, clearCollectionHistory } from './fresh-start';
  * Single periodic scanner without account-level Cron Triggers.
  * Durable Object alarms are persisted and automatically wake the object.
  */
-export const ALARM_INTERVAL_MS=60_000;
+export const ALARM_INTERVAL_MS=120_000;
 
 export class RadarScheduler extends DurableObject<Bindings> {
  // DO events may interleave across awaits. Prevent overlapping alarm scans
@@ -16,6 +16,10 @@ export class RadarScheduler extends DurableObject<Bindings> {
  private scanning = false;
 
  async fetch(_request: Request): Promise<Response> {
+  if(this.env.COLLECTION_PAUSED==='true'){
+   await this.ctx.storage.deleteAlarm();
+   return Response.json({armed:false,collection_paused:true});
+  }
   const current = Date.now();
   const plan = readFreshStartPlan(this.env, current);
   const next = await this.ctx.storage.getAlarm();
@@ -50,6 +54,10 @@ export class RadarScheduler extends DurableObject<Bindings> {
  }
 
  async alarm(): Promise<void> {
+  if(this.env.COLLECTION_PAUSED==='true'){
+   await this.ctx.storage.deleteAlarm();
+   return;
+  }
   const current = Date.now();
   const plan = readFreshStartPlan(this.env, current);
   if (plan) {
@@ -81,9 +89,15 @@ export class RadarScheduler extends DurableObject<Bindings> {
   if (this.scanning) return;
   this.scanning = true;
   try {
-   await runCollection(this.env);
-   // DO storage (not D1) tracks completion and retries on the next alarm.
+   // Daily scan budget lives in DO storage, avoiding D1 writes for accounting.
    const day = Math.floor(Date.now()/86_400_000);
+   const budget = await this.ctx.storage.get<{day:number;used:number}>('providerScanBudget');
+   const used = budget?.day===day?budget.used:0;
+   await runCollection(this.env,Math.max(0,DAILY_PROVIDER_SCAN_LIMIT-used),async attempted=>{
+    // Reserve BEFORE model scans; a failed scan still consumes a budget slot.
+    await this.ctx.storage.put('providerScanBudget',{day,used:used+attempted});
+   });
+   // DO storage (not D1) tracks completion and retries on the next alarm.
    if ((await this.ctx.storage.get<number>('housekeepingDay')) !== day) {
     await runHousekeeping(this.env);
     await this.ctx.storage.put('housekeepingDay',day);

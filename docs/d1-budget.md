@@ -16,8 +16,15 @@ Radar 主要以 **D1 rows read / rows written** 而不是 SQL 请求数计费。
 
 ## 配额估算和观测
 
-默认每分钟扫描最多 15 个模型，理论最多每天 **21,600 次模型 Provider 扫描**（实际受模型冷却时间、API 超时和模型数量制约）。每次成功扫描保留一次任务状态写；如果任务行有 `last_checked` 索引，相关索引写入也占行额度。目录及端点未变动的数据不再额外写入。实际读写还取决于用户流量、订阅事件、索引写入和首次导入数量，因此 **不能保证任意规模实例绝不超额**。
+生产配置每 2 分钟扫描最多 6 个模型，并由单例 Durable Object 存储维护 **4,000 次模型 Provider 扫描 / UTC 日** 的尝试次数预算。实际刷新时效取决于活跃模型数量；免费档优先保证稳定服务，不能承诺所有 Provider 每小时更新。每次成功扫描保留一次任务状态写；如果任务行有 `last_checked` 索引，相关索引写入也占行额度。目录及端点未变动的数据不再额外写入。实际读写还取决于用户流量、订阅事件、索引写入和首次导入数量，因此 **不能保证任意规模实例绝不超额**。
 
-请在 Cloudflare Dashboard → D1 → Metrics → Row Metrics 观察 `Rows read` / `Rows written`，对照 24 小时趋势。必要时降低 `MAX_MODELS_PER_TICK`（不会影响目录每小时拉取，但可能使所有 Provider 扫描周期超过一小时），或升级 Workers Paid。不要误把 `DB.batch()` 当作减少计费行数：它减少往返而不是实际读取/写入行数。
+请在 Cloudflare Dashboard → D1 → Metrics → Row Metrics 观察 `Rows read` / `Rows written`，对照 24 小时趋势。如仍接近配额，应进一步缩小单次扫描批次，或升级 Workers Paid。`COLLECTION_PAUSED=true` 会取消单例 DO Alarm 并暂停采集；恢复时设为 `false` 并访问一次 `/api/health` 重新启动。项目目前未提供 D1 总写入量的精确自动限额（Catalog 更新、事件匹配、D1 索引写入仍会计费），生产仍需查看 Cloudflare 使用量。不要误把 `DB.batch()` 当作减少计费行数：它减少往返而不是实际读取/写入行数。
 
 **部署说明：** 本次新增索引迁移 `0009_d1_budget_indexes.sql`，由已有 GitHub Actions 部署流程自动执行。首次迁移创建索引会消耗一次性的 D1 操作和存储。首次目录导入仍不可避免产生大量新增行。
+
+## 生产安全防护（2026-10-22）
+
+- 永久移除生产部署配置中 `FRESH_START_*`。清理历史数据函数还要求额外显式设置 `ALLOW_DESTRUCTIVE_FRESH_START=true`；不要在生产设置此开关。对已经写入的历史记录不做重新初始化。
+- 单例 DO 为 Provider 扫描预先扣减每日预算，失败的尝试也计入限额；跨重启保留额度状态，UTC 新的一天重置。
+- 配置 `COLLECTION_PAUSED=true` 时取消 DO alarm 而不删除 D1 或 DO 存储；部署恢复后第一次健康检查会重新 arm。
+- `MAX_MODELS_PER_TICK` 的代码硬上限为 6，防止配置意外恢复到旧的高频值。首次新部署或导入大量全新模型时，请人工关注一次性写入峰值。

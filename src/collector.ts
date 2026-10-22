@@ -21,8 +21,10 @@ function storedPrices(raw:string):Prices{try{return parsePrices(JSON.parse(raw))
 
 export const CATALOG_INTERVAL_SECONDS=3600;
 export const PROVIDER_INTERVAL_SECONDS=3600;
-export const DEFAULT_MODELS_PER_TICK=15;
-export const MAX_MODELS_PER_TICK=25;
+export const DEFAULT_MODELS_PER_TICK=6;
+export const MAX_MODELS_PER_TICK=6;
+/** Maximum model Provider scans per UTC day, tracked by the singleton DO. */
+export const DAILY_PROVIDER_SCAN_LIMIT=4_000;
 
 export function modelLifecycleTransition(status:string,misses:number,found:boolean):{
  status:'active'|'removed';misses:number;event:'model.removed'|'model.restored'|null
@@ -315,17 +317,25 @@ export async function emitExpiryAlerts(env:Bindings):Promise<number>{
  for(let i=0;i<stmts.length;i+=50)await env.DB.batch(stmts.slice(i,i+50));
  return stmts.length;
 }
-export async function runCollection(env:Bindings):Promise<void>{
+export async function runCollection(env:Bindings,remainingDaily=DAILY_PROVIDER_SCAN_LIMIT,
+ reserveScans?:(count:number)=>Promise<void>):Promise<number>{
  try{await refreshCatalog(env);}catch{/* Catalog error remains visible in /api/health */}
  try{await refreshImageCatalog(env);}catch{/* Image catalogue retains its previous successful snapshot */}
- const count=modelsPerTick(env.MAX_MODELS_PER_TICK);
- const jobs=await env.DB.prepare("SELECT j.model_id FROM collection_jobs j JOIN models m ON m.id=j.model_id WHERE m.lifecycle_status='active' AND j.leased_until<? AND j.last_checked<? ORDER BY j.last_checked ASC,j.model_id ASC LIMIT ?")
-  .bind(now(),now()-PROVIDER_INTERVAL_SECONDS,count).all<{model_id:string}>();
- // At most three upstream endpoint requests in flight at a time.
- for(let i=0;i<jobs.results.length;i+=3){
-  await Promise.all(jobs.results.slice(i,i+3).map(job=>collectModel(env,job.model_id)));
+ const count=Math.min(modelsPerTick(env.MAX_MODELS_PER_TICK),Math.max(0,Math.floor(remainingDaily)));
+ let attempted=0;
+ if(count>0){
+  const jobs=await env.DB.prepare("SELECT j.model_id FROM collection_jobs j JOIN models m ON m.id=j.model_id WHERE m.lifecycle_status='active' AND j.leased_until<? AND j.last_checked<? ORDER BY j.last_checked ASC,j.model_id ASC LIMIT ?")
+   .bind(now(),now()-PROVIDER_INTERVAL_SECONDS,count).all<{model_id:string}>();
+  attempted=jobs.results.length;
+  // Reserve before running requests so an interrupted run cannot bypass the daily guard.
+  if(attempted&&reserveScans)await reserveScans(attempted);
+  // At most three upstream endpoint requests in flight at a time.
+  for(let i=0;i<jobs.results.length;i+=3){
+   await Promise.all(jobs.results.slice(i,i+3).map(job=>collectModel(env,job.model_id)));
+  }
  }
- await matchUnmatchedEvents(env);
+ await matchUnmatchedEvents(env,25);
+ return attempted;
 }
 /** Run infrequent retention and expiry work once per UTC day, not each minute. */
 export async function runHousekeeping(env:Bindings):Promise<void>{
