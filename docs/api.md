@@ -71,8 +71,8 @@ The Durable Object alarm wakes each minute. The full model catalogue refreshes o
 
 ## Model discovery and change feed
 
-- GET /api/models accepts q, provider (exact provider name), sort (name, newest, context, price), page (1-based), limit (1–100). The response includes total and each model's active Provider count plus lowest observed **base** input token price (USD/token). The price sort uses this normalized displayed price; it does not imply comparability of other billing dimensions or dynamic overrides.
-- GET /api/events accepts model_id, q (substring of model ID or Provider), kind (exact change code), page, limit (1–100), and returns total. Events are ordered newest-first. Use page links to avoid truncating the public history at 40–50 entries.
+- GET /api/models accepts q, provider (exact provider name), sort (name, newest, context, price), page (1-based), limit (1–100). Search `q` supports up to 8 case-insensitive OR keywords separated by comma (`gpt, claude`), Chinese comma, semicolon, or newline (max 256 input characters, 64 per keyword). Without separators, the full query stays a single substring, including spaces. The response includes total and each model's active Provider count plus lowest observed **base** input token price (USD/token). The price sort uses this normalized displayed price; it does not imply comparability of other billing dimensions or dynamic overrides.
+- GET /api/events accepts model_id, q (same multi-keyword OR search over model ID or Provider), kind (exact change code), page, limit (1–100), and returns total. Events are ordered newest-first. Use page links to avoid truncating the public history at 40–50 entries.
 - These APIs show recorded data, not confirmed minute-by-minute live quotes. The catalogue and Provider sweeps are best-effort hourly jobs.
 
 ## Expanded monitoring, comparison and exports
@@ -80,7 +80,7 @@ The Durable Object alarm wakes each minute. The full model catalogue refreshes o
 - GET /api/model?id=... returns collection metadata (fresh/stale/error/never), last attempted and successful Provider scans, plus sanitized errors.
 - GET /api/price-history?model_id=...&provider=...&dimension=input|output|cache_read|cache_write|cache_write_1h|... returns sparse observed baseline/change points for known monetary dimensions with explicit units. Use source=model to see the aggregate quote; mode=image for image-unit observations. Includes the last real observation from before the requested window when available, with its actual observed_at timestamp. 180-day retention; no invented hourly samples.
 - GET /api/models additionally accepts author, modality, capability, min_context and max_input_price (USD per million Token). Price comparisons only reflect recorded base Token quotes.
-- GET /api/events additionally accepts provider, start, end (Unix seconds). GET /api/events/export with the same filters supports CSV or JSON with a maximum 1,000 rows per request. RSS supports page=.
+- GET /api/events additionally accepts provider, start, end (Unix seconds). GET /api/events/export uses the identical multi-keyword search filters, with CSV or JSON output and a maximum 1,000 rows per request. RSS supports page=.
 - PATCH /api/subscriptions/:id edits provider, events, threshold_pct, frequency and paused (boolean). Pausing suppresses queued alerts and new event matching.
 - GET /api/subscriptions includes paused, last_hit, last_sent and latest_status. GET /api/notifications includes retry counts and safe delivery error labels.
 - No Telegram or Webhook APIs. Delivery is email + in-app; RSS remains public.
