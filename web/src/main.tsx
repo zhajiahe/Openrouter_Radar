@@ -335,7 +335,7 @@ function App(){
     {view==='catalog'&&<>
      <div className="page-heading"><div><div className="eyebrow">EXPLORE MODELS</div><h1>Models <span className="model-count">{modelTotal.toLocaleString()}</span></h1><p>{"按模型、Provider、价格探索 OpenRouter 市场。仅显示实际采集的数据。"}</p></div></div>
      <div className="search-row">
-      <div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索 claude、gpt、deepseek…" /><kbd>/</kbd></div>
+      <div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID，多个关键词用逗号分隔" maxLength={256} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索 gpt, claude, deepseek（逗号分隔）" /><kbd>/</kbd></div>
       <label className="sort-field"><span>排序</span><Select aria-label="模型排序" value={sort} onChange={value=>{setSort(value||"name");setPage(1);}} data={[{value:"name",label:"名称 A–Z"},{value:"newest",label:"最近更新"},{value:"context",label:"上下文长度"},{value:"price",label:"最低输入价"}]}/></label>
      </div>
      <div className="catalog-grid">
@@ -411,7 +411,7 @@ function App(){
     </>}
     {view==='events'&&<>
      <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml"><Rss size={16}/> RSS</a></div>
-     <div className="events-filters"><div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput className="radar-search" aria-label="筛选模型或 Provider" placeholder="搜索模型 ID / Provider…" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
+     <div className="events-filters"><div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput className="radar-search" aria-label="筛选模型或 Provider，多个关键词用逗号分隔" maxLength={256} placeholder="搜索 claude, gpt（逗号分隔）" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
       <Select aria-label="事件类型" searchable clearable placeholder="全部事件" value={eventKind||null} onChange={v=>{setEventKind(v||"");setEventPage(1);}} data={EVENTS.map(([value,label])=>({value,label}))}/>
       <Select aria-label="Provider 筛选" searchable clearable placeholder="所有 Provider" value={eventProvider||null} onChange={v=>{setEventProvider(v||"");setEventPage(1);}} data={providers.map(p=>({value:p.provider,label:p.provider}))}/>
      </div>
