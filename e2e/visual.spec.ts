@@ -24,7 +24,14 @@ async function checkDocument(page:Page,width:number){
 }
 async function goto(page:Page){
  await page.goto('/',{waitUntil:'domcontentloaded'});
- await expect(page.getByRole('navigation',{name:'主要导航'})).toBeVisible();
+ if((page.viewportSize()?.width||9999)<=720)await expect(page.getByRole('button',{name:'打开页面导航'})).toBeVisible();
+ else await expect(page.getByRole('navigation',{name:'主要导航'})).toBeVisible();
+}
+async function navTo(page:Page,name:string){
+ if((page.viewportSize()?.width||9999)<=720){
+  await page.getByRole('button',{name:'打开页面导航'}).click();
+  await page.getByRole('menuitem',{name,exact:true}).click();
+ }else await page.getByRole('navigation',{name:'主要导航'}).getByRole('button',{name,exact:true}).click();
 }
 test.beforeEach(async({page})=>{
  await page.clock.install({time:new Date('2026-10-20T12:00:00Z')});
@@ -78,7 +85,7 @@ for(const width of widths){
    const errors:string[]=[];
    page.on('pageerror',e=>errors.push(e.message));
    await goto(page);
-   await page.getByRole('navigation',{name:'主要导航'}).getByRole('button',{name:'Models'}).click();
+   await navTo(page,'Models');
    await expect(page.locator('.model-main')).toHaveCount(3);
    if(!baseline)await expect(page.getByRole('contentinfo',{name:'网站页脚'})).toBeVisible();
    await checkDocument(page,width);
@@ -116,14 +123,13 @@ for(const width of widths){
    const errors:string[]=[];
    page.on('pageerror',e=>errors.push(e.message));
    await goto(page);
-   const nav=page.getByRole('navigation',{name:'主要导航'});
-   await nav.getByRole('button',{name:'Changes'}).click();
+   await navTo(page,'Changes');
    await expect(page.locator('.events-table tbody tr')).toHaveCount(3);
    await expect(page.locator('.events-table')).toContainText('【输入价格】下降');
    await expect(page.locator('.events-table')).toContainText('【输出价格】上涨');
    await checkDocument(page,width);
    await capture(page,`${width}/changes.png`);
-   await nav.getByRole('button',{name:'通知'}).click();
+   await navTo(page,'通知');
    await expect(page.getByRole('heading',{name:'通知中心'})).toBeVisible();
    await checkDocument(page,width);
    await page.getByRole('button',{name:/登录 \/ 注册/}).first().click();
@@ -139,10 +145,10 @@ for(const width of [390,1440]){
   test.use({viewport:{width,height:900},deviceScaleFactor:1});
   test('image billing unit and detail fallback',async({page})=>{
    await goto(page);
-   await page.getByRole('navigation',{name:'主要导航'}).getByRole('button',{name:'Models'}).click();
+   await navTo(page,'Models');
    await page.locator('.model-main').filter({hasText:'Studio Image Generator'}).click();
    await expect(page.locator('.detail-panel')).toContainText(IMAGE_ID);
-   await expect(page.locator('.detail-quick-price')).toContainText('按计费项');
+   await expect(page.locator('.detail-quick-price')).toContainText('查看实际计费');
    await expect(page.locator('.historic-card:not(.provider-stability)')).toContainText('图片计费');
    await capture(page,`${width}/image-model.png`);
    await checkDocument(page,width);
@@ -158,16 +164,11 @@ for(const width of [375,390]){
    const errors:string[]=[];
    page.on('pageerror',e=>errors.push(e.message));
    await goto(page);
-   const nav=page.getByRole('navigation',{name:'主要导航'});
-   const navDimensions=await nav.evaluate(el=>({content:el.scrollWidth,visible:el.clientWidth}));
-   if(!baseline){
-    expect(navDimensions.content).toBeGreaterThan(navDimensions.visible);
-    await page.getByRole('button',{name:'向右滚动导航'}).tap();
-    await expect.poll(()=>nav.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
-   }
-   await nav.getByRole('button',{name:'通知'}).tap();
+   // The compact mobile menu replaces an inaccessible horizontally scrolled nav.
+   await expect(page.getByRole('button',{name:'打开页面导航'})).toBeVisible();
+   await navTo(page,'通知');
    await expect(page.getByRole('heading',{name:'通知中心'})).toBeVisible();
-   await nav.getByRole('button',{name:'Models'}).tap();
+   await navTo(page,'Models');
    if(!baseline){
     const advanced=page.getByRole('button',{name:/筛选条件/});
     await expect(advanced).toBeVisible();

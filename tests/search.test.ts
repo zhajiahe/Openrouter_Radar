@@ -71,7 +71,7 @@ test('model catalogue uses relevance by default only for nonempty searches', () 
  assert.match(api,/provider_count DESC/);
  assert.match(api,/order\[sortMode\]/);
  assert.match(api,/\.bind\(provider,provider,\.\.\.\(relevance\?\.binds\|\|\[\]\),\.\.\.binds/);
- assert.match(ui,/const \[sort,setSort\]=useState\('auto'\)/);
+ assert.match(ui,/const \[sort,setSort\]=useState\(\(\)=>routeParam\('sort'\)\|\|'auto'\)/);
  assert.match(ui,/value:"relevance",label:"相关度优先"/);
  assert.match(ui,/双引号搜索完整短语/);
 });

@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,Table,TextInput} from '@mantine/core';
-import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,ChevronLeft,ChevronRight,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,SlidersHorizontal,Sun,UserRound,X} from 'lucide-react';
+import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Menu,Modal,NumberInput,Pagination,Select,Table,TextInput} from '@mantine/core';
+import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,ChevronLeft,ChevronRight,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Menu as MenuIcon,Moon,Plus,Radar,RefreshCw,Rss,Search,SlidersHorizontal,Sun,UserRound,X} from 'lucide-react';
 import {useDebouncedValue} from '@mantine/hooks';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
@@ -15,8 +15,9 @@ import {AnalyticsDashboard} from './analytics';
 import {utcEventBounds} from './event-date';
 import {ProviderPriceStability} from './provider-stability';
 import {eventTitle,priceDimensionLabel} from '../../src/event-labels';
+import {contextBrief,contextDisplay,nonTokenModel} from './model-display';
 
-type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number;model_kind?:string;lifecycle_status?:string};
+type Model={id:string;name:string;context_length:number|null;updated_at:number;expiration_date?:number|null;alias_target?:string|null;lowest_input?:number|null;provider_count?:number;model_kind?:string;lifecycle_status?:string;capabilities_json?:string|null};
 type ProviderOption={provider:string;model_count:number};
 type Endpoint={id:string;provider:string;tag:string;source:string;input_price:string|null;output_price:string|null;status:string;checked_at:number;pricing_json:string};
 type Collection={status:string;last_attempt:number|null;last_success:number|null;last_error:string|null;age_seconds:number|null;active_endpoints:number;missing_endpoints:number};
@@ -28,7 +29,15 @@ const EVENTS=[
 ] as const;
 const DIMENSION_OPTIONS=[{value:'input',label:'输入 Token'},{value:'output',label:'输出 Token'},{value:'cache_read',label:'缓存读取'},{value:'cache_write',label:'缓存写入'},{value:'cache_write_1h',label:'缓存写入 1h'},{value:'input_audio_cache',label:'音频缓存'},{value:'internal_reasoning',label:'推理 Token'},{value:'image_token',label:'图片 Token'},{value:'audio_output',label:'音频输出'}];
 const label=(kind:string)=>EVENTS.find(e=>e[0]===kind)?.[1]||kind;
-const time=(ts:number)=>new Date(ts*1000).toLocaleString();
+const time=(ts:number)=>new Date(ts*1000).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'});
+const relativeTime=(ts:number)=>{
+ const seconds=Math.max(0,Math.floor(Date.now()/1000)-ts);
+ if(seconds<60)return '刚刚';
+ if(seconds<3600)return Math.floor(seconds/60)+' 分钟前';
+ if(seconds<86400)return Math.floor(seconds/3600)+' 小时前';
+ if(seconds<86400*30)return Math.floor(seconds/86400)+' 天前';
+ return new Date(ts*1000).toLocaleDateString('zh-CN');
+};
 const million=(price:string|null)=>price===null?'—':'$'+(Number(price)*1e6).toLocaleString(undefined,{maximumFractionDigits:5});
 const endpointPrice=(price:string|null)=>million(price);
 const extraPrice=(ep:Endpoint,field:string)=>{
@@ -45,15 +54,20 @@ const formatEvent=(e:Event):string=>{
  if(e.kind==='model.removed')return '连续两次成功目录采集未找到该模型';
  if(e.kind==='model.restored')return '曾确认下架的模型重新出现';
  if(e.kind==='price.policy_changed'){
-  if(e.dimension?.startsWith('scheduled_'))return '分时生效价格切换（预定窗口，非临时涨跌）：'+(e.old_price||'未知')+' → '+(e.new_price||'未知');
+  if(e.dimension?.startsWith('scheduled_')){
+   const dimension=e.dimension.slice('scheduled_'.length);
+   const token=['input','output','cache_read','cache_write','cache_write_1h','input_cache_read','input_cache_write','input_cache_write_1h'].includes(dimension);
+   const amount=(value:string|null)=>value===null?'未知':token?million(value):value;
+   return '分时生效价格切换（预定窗口）：'+priceDimensionLabel(dimension)+' '+amount(e.old_price)+' → '+amount(e.new_price)+(token?' USD / 1M Tokens':'（原计费单位，以规则为准）');
+  }
   if(e.dimension==='discount')return '折扣规则变化（不能直接视作降价）：'+(e.old_price||'未知')+' → '+(e.new_price||'未知');
   return (e.dimension||'计价规则')+' 已发生变化';
  }
  if(e.kind.startsWith('model.'))return (e.dimension||'模型属性')+'：'+(e.old_price||'未知').slice(0,90)+' → '+(e.new_price||'未知').slice(0,90);
  if(e.old_price!==null&&e.new_price!==null){
-   const token=['input','output','cache_read','cache_write','cache_write_1h'].includes(e.dimension||'');
+   const token=['input','output','cache_read','cache_write','cache_write_1h','internal_reasoning','image_token','input_audio_cache'].includes(e.dimension||'');
    const f=(v:string)=>token?million(v):v;
-   return priceDimensionLabel(e.dimension)+': '+f(e.old_price)+' → '+f(e.new_price)+(token?' / 百万 Token':' / 原始计费单位');
+   return priceDimensionLabel(e.dimension)+': '+f(e.old_price)+' → '+f(e.new_price)+(token?' USD / 1M Tokens':' / 原始计费单位（详见规则）');
  }
  return 'Provider 端点状态变化';
 };
@@ -63,8 +77,16 @@ async function api<T>(path:string,options?:RequestInit):Promise<T>{
  if(!r.ok)throw new Error(body.error||'Request failed');
  return body as T;
 }
+const validViews=new Set(['overview','catalog','events','watches','notices','account']);
+const routeParam=(key:string)=>new URLSearchParams(location.search).get(key)||'';
+const routeView=()=>validViews.has(routeParam('view'))?routeParam('view'):'overview';
+const routePage=(key:string)=>{
+ const value=Number(routeParam(key));
+ return Number.isInteger(value)&&value>0&&value<=10000?value:1;
+};
 function App(){
- const [view,setView]=useState('overview');
+ const [view,setView]=useState(routeView);
+ const [routeReady,setRouteReady]=useState(false);
  const [theme,setTheme]=useState<'light'|'dark'>(()=>localStorage.getItem('radar-theme')==='dark'?'dark':'light');
  useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('radar-theme',theme);document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#15141a':'#ffffff');},[theme]);
  useEffect(()=>{document.documentElement.lang='zh-CN';},[]);
@@ -80,13 +102,13 @@ function App(){
  const [modelTotal,setModelTotal]=useState(0);
  const [modelLoading,setModelLoading]=useState(false);
  const [providers,setProviders]=useState<ProviderOption[]>([]);
- const [providerFilter,setProviderFilter]=useState('');
- const [sort,setSort]=useState('auto');
- const [authorFilter,setAuthorFilter]=useState('');
- const [modalityFilter,setModalityFilter]=useState('');
- const [capabilityFilter,setCapabilityFilter]=useState('');
- const [minContext,setMinContext]=useState('');
- const [maxInput,setMaxInput]=useState('');
+ const [providerFilter,setProviderFilter]=useState(()=>routeParam('provider'));
+ const [sort,setSort]=useState(()=>routeParam('sort')||'auto');
+ const [authorFilter,setAuthorFilter]=useState(()=>routeParam('author'));
+ const [modalityFilter,setModalityFilter]=useState(()=>routeParam('modality'));
+ const [capabilityFilter,setCapabilityFilter]=useState(()=>routeParam('capability'));
+ const [minContext,setMinContext]=useState(()=>routeParam('min_context'));
+ const [maxInput,setMaxInput]=useState(()=>routeParam('max_input_price'));
  const [compareIds,setCompareIds]=useState<string[]>([]);
  const catalogSearch=useRef<HTMLInputElement>(null);
  const navRef=useRef<HTMLElement>(null);
@@ -99,22 +121,22 @@ function App(){
  const [events,setEvents]=useState<Event[]>([]);
  const [recentEvents,setRecentEvents]=useState<Event[]>([]);
  const [modelEvents,setModelEvents]=useState<Event[]>([]);
- const [eventSearch,setEventSearch]=useState('');
- const [eventKind,setEventKind]=useState('');
- const [eventProvider,setEventProvider]=useState('');
- const [eventStart,setEventStart]=useState('');
- const [eventEnd,setEventEnd]=useState('');
- const [eventPage,setEventPage]=useState(1);
+ const [eventSearch,setEventSearch]=useState(()=>routeParam('event_q'));
+ const [eventKind,setEventKind]=useState(()=>routeParam('kind'));
+ const [eventProvider,setEventProvider]=useState(()=>routeParam('event_provider'));
+ const [eventStart,setEventStart]=useState(()=>routeParam('start'));
+ const [eventEnd,setEventEnd]=useState(()=>routeParam('end'));
+ const [eventPage,setEventPage]=useState(()=>routePage('event_page'));
  const [eventTotal,setEventTotal]=useState(0);
  const [loadingEvents,setLoadingEvents]=useState(false);
  const [watches,setWatches]=useState<Watch[]>([]);
  const [editingWatch,setEditingWatch]=useState<string|null>(null);
  const [watchDraft,setWatchDraft]=useState<{provider:string;threshold_pct:number;frequency:string;price_dimension:string;events:string[]}>({provider:'',threshold_pct:0,frequency:'instant',price_dimension:'',events:[]});
  const [notices,setNotices]=useState<Notice[]>([]);
- const [search,setSearch]=useState('');
+ const [search,setSearch]=useState(()=>routeParam('q'));
  const [debouncedSearch]=useDebouncedValue(search,250);
  const [debouncedEventSearch]=useDebouncedValue(eventSearch,250);
- const [page,setPage]=useState(1);
+ const [page,setPage]=useState(()=>routePage('page'));
  const [selected,setSelected]=useState<Model|null>(null);
  const [endpoints,setEndpoints]=useState<Endpoint[]>([]);
  const [collection,setCollection]=useState<Collection|null>(null);
@@ -168,7 +190,6 @@ function App(){
   setSelected(model);setView('catalog');setWatchProvider('');setWatchDimension('');setThreshold(0);setFrequency('instant');
   if(window.matchMedia('(max-width: 990px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
   setEndpoints([]);setModelEvents([]);setCollection(null);
-  history.replaceState(null,'','#model='+encodeURIComponent(model.id));
   try{
    const [details,changes]=await Promise.all([
     api<{model:Model;endpoints:Endpoint[];collection:Collection}>('/model?id='+encodeURIComponent(model.id)),
@@ -185,10 +206,44 @@ function App(){
   api<{data:ProviderOption[]}>('/providers').then(r=>setProviders(r.data)).catch(()=>{});
   const modelId=new URLSearchParams(location.hash.slice(1)).get('model')||'';
   if(modelId){
-   void api<{model:Model}>('/model?id='+encodeURIComponent(modelId)).then(r=>void inspect(r.model)).catch(()=>{});
-  }
+   void api<{model:Model}>('/model?id='+encodeURIComponent(modelId))
+    .then(r=>inspect(r.model)).catch(()=>{}).finally(()=>setRouteReady(true));
+  }else setRouteReady(true);
   void loadPublic();
  },[]);
+ useEffect(()=>{
+  const restore=()=>{
+   setRouteReady(false);
+   const params=new URLSearchParams(location.search);
+   const get=(key:string)=>params.get(key)||'';
+   setView(validViews.has(get('view'))?get('view'):'overview');
+   setSearch(get('q'));setPage(routePage('page'));setProviderFilter(get('provider'));setSort(get('sort')||'auto');
+   setAuthorFilter(get('author'));setModalityFilter(get('modality'));setCapabilityFilter(get('capability'));
+   setMinContext(get('min_context'));setMaxInput(get('max_input_price'));
+   setEventSearch(get('event_q'));setEventKind(get('kind'));setEventProvider(get('event_provider'));
+   setEventStart(get('start'));setEventEnd(get('end'));setEventPage(routePage('event_page'));
+   const modelId=new URLSearchParams(location.hash.slice(1)).get('model');
+   if(modelId){
+    void api<{model:Model}>('/model?id='+encodeURIComponent(modelId))
+     .then(r=>inspect(r.model)).catch(()=>setSelected(null)).finally(()=>setRouteReady(true));
+   }else{setSelected(null);setRouteReady(true);}
+  };
+  window.addEventListener('popstate',restore);
+  return ()=>window.removeEventListener('popstate',restore);
+ },[]);
+ useEffect(()=>{
+  if(!routeReady)return;
+  const url=new URL(location.href);
+  const values:Record<string,string>={
+   view:view==='overview'?'':view,q:search,page:page===1?'':String(page),provider:providerFilter,
+   sort:sort==='auto'?'':sort,author:authorFilter,modality:modalityFilter,capability:capabilityFilter,
+   min_context:minContext,max_input_price:maxInput,event_q:eventSearch,kind:eventKind,
+   event_provider:eventProvider,start:eventStart,end:eventEnd,event_page:eventPage===1?'':String(eventPage)
+  };
+  for(const [key,value] of Object.entries(values)){if(value)url.searchParams.set(key,value);else url.searchParams.delete(key);}
+  url.hash=view==='catalog'&&selected?'model='+encodeURIComponent(selected.id):'';
+  if(url.href!==location.href)history.replaceState(null,'',url.pathname+url.search+url.hash);
+ },[routeReady,view,search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput,eventSearch,eventKind,eventProvider,eventStart,eventEnd,eventPage,selected?.id]);
  useEffect(()=>{if(user)void loadPrivate();},[user]);
  useEffect(()=>{void loadModels(debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput);},[debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput]);
  useEffect(()=>{void loadEvents(debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd);},[debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd]);
@@ -255,8 +310,8 @@ function App(){
  }
  function exportUrl(format:'csv'|'json'){
   const params=new URLSearchParams({format,q:eventSearch,kind:eventKind,provider:eventProvider});
-  if(eventStart)params.set('start',String(Math.floor(new Date(eventStart+'T00:00:00').getTime()/1000)));
-  if(eventEnd)params.set('end',String(Math.floor(new Date(eventEnd+'T23:59:59').getTime()/1000)));
+  if(eventStart){const bounds=utcEventBounds(eventStart);if(bounds)params.set('start',String(bounds.start));}
+  if(eventEnd){const bounds=utcEventBounds(eventEnd);if(bounds)params.set('end',String(bounds.end));}
   return '/api/events/export?'+params.toString();
  }
  async function removeWatch(id:string){
@@ -269,13 +324,24 @@ function App(){
   catch(e){setError((e as Error).message);}
  }
  async function copyModelLink(modelId:string){
-  const link=location.origin+location.pathname+'#model='+encodeURIComponent(modelId);
+  const url=new URL(location.href);
+  url.searchParams.set('view','catalog');
+  url.hash='model='+encodeURIComponent(modelId);
+  const link=url.toString();
   try{
    if(!navigator.clipboard?.writeText)throw new Error('Clipboard not available');
    await navigator.clipboard.writeText(link);setMessage('模型链接已复制');
   }catch{setError('复制失败，请从地址栏复制当前模型链接');}
  }
- async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);setView('overview');}
+ function navigateView(id:string){
+  const url=new URL(location.href);
+  if(id==='overview')url.searchParams.delete('view');else url.searchParams.set('view',id);
+  if(id!=='catalog')url.hash='';
+  history.pushState(null,'',url.pathname+url.search+url.hash);
+  setView(id);setError('');
+  if(id!=='catalog')setSelected(null);
+ }
+ async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);navigateView('overview');}
  const unread=notices.filter(n=>!n.read_at).length;
  const navItems=[{id:'overview',name:'概览',icon:LayoutDashboard},{id:'catalog',name:'Models',icon:Layers},{id:'events',name:'Changes',icon:History},{id:'watches',name:'Watchlist',icon:Bookmark},{id:'notices',name:'通知',icon:Bell}];
  const titles:Record<string,string>={overview:'Overview',catalog:'Models',events:'Changes',watches:'Watchlist',notices:'Notifications',account:'Account'};
@@ -291,9 +357,13 @@ function App(){
    <div className="brand"><span className="brand-icon" aria-hidden="true"><Radar size={21}/></span><span>OpenRouter <b>Radar</b></span></div>
    <div className="side-caption">MODEL MONITORING</div>
    <nav aria-label="主要导航" ref={navRef} onScroll={e=>{const el=e.currentTarget;setNavAtEnd(el.scrollLeft+el.clientWidth>=el.scrollWidth-3);}}>{navItems.map(({id,name,icon:Icon})=>
-    <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setError('');if(id!=='catalog')history.replaceState(null,'',location.pathname+location.search);}}>
+    <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>navigateView(id)}>
      <Icon className="nav-icon" size={17} aria-hidden="true"/>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
     </button>)}</nav>
+   <Menu position="bottom-end" withinPortal>
+    <Menu.Target><button className="mobile-nav-trigger" type="button" aria-label="打开页面导航"><MenuIcon size={18} aria-hidden="true"/>菜单</button></Menu.Target>
+    <Menu.Dropdown>{navItems.map(({id,name})=><Menu.Item key={id} onClick={()=>navigateView(id)}>{name}</Menu.Item>)}<Menu.Divider/><Menu.Item onClick={()=>navigateView('account')}>登录 / 账号</Menu.Item></Menu.Dropdown>
+   </Menu>
    <button type="button" className="nav-more" aria-label={navAtEnd?'向左滚动导航':'向右滚动导航'} onClick={()=>navRef.current?.scrollBy({left:navAtEnd?-180:180,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}>{navAtEnd?<ChevronLeft size={17}/>:<ChevronRight size={17}/>}</button>
    <div className="side-footer"><span className="sidebar-status"><span className="online-dot"/> OPEN SOURCE RADAR</span><p>不需要个人 API Key。<br/>持续收集，按需订阅。</p><a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">在 GitHub 查看项目 ↗</a></div>
   </aside>
@@ -301,9 +371,9 @@ function App(){
    <header className="topbar">
     <div className="breadcrumb"><span>Radar</span><span className="breadcrumb-separator">/</span><b>{titles[view]}</b></div>
     <div className="topbar-actions">
-     <span className={'live-indicator '+(status.status==='ok'?'':'muted-status')} role="status"><span className="online-dot"/>{status.status==='ok'?"同步正常":"同步状态待确认"}</span>
+     <span className={'live-indicator '+(status.status==='ok'?'':'muted-status')} role="status"><span className="online-dot"/>{status.status==='ok'?"目录采集正常":"目录采集待确认"}</span>
      <div className="preference-controls"><button onClick={()=>setTheme(v=>v==='light'?'dark':'light')} aria-label="切换深色/浅色主题" title="外观">{theme==='light'?<Moon size={16}/>:<Sun size={16}/>}</button></div>
-     <button className="account-button" onClick={()=>setView('account')}><UserRound size={15} aria-hidden="true"/>{user?user.email:"登录 / 注册"}</button>
+     <button className="account-button" onClick={()=>navigateView('account')}><UserRound size={15} aria-hidden="true"/>{user?user.email:"登录 / 注册"}</button>
     </div>
    </header>
    <div className="content">
@@ -340,7 +410,7 @@ function App(){
      </div>
      <div className="catalog-grid">
       <aside className="panel filter-panel" aria-label="模型筛选">
-       <h3 className="filter-desktop-heading">Filters</h3>
+       <h2 className="filter-desktop-heading">Filters</h2>
        <button type="button" className="filter-toggle" aria-controls="catalog-filter-contents" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(v=>!v)}><span><SlidersHorizontal size={17} aria-hidden="true"/> 筛选条件 {activeFilterCount>0?<Badge size="sm" variant="light" color="violet">{activeFilterCount}</Badge>:null}</span><ChevronDown size={16} aria-hidden="true" className={filtersOpen?'open':''}/></button>
        <div id="catalog-filter-contents" className={'filter-contents '+(filtersOpen?'is-open':'')}>
        <label htmlFor="provider-filter">Provider</label>
@@ -360,22 +430,22 @@ function App(){
        <div className="model-list" aria-busy={modelLoading}>{models.map(m=><div key={m.id} className={'model-item '+(selected?.id===m.id?'chosen':'')}>
         <button className="model-main" aria-pressed={selected?.id===m.id} onClick={()=>void inspect(m)}>
          <span className="model-avatar" aria-hidden="true">{m.id.split('/')[0].slice(0,2).toUpperCase()}</span>
-         <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{m.context_length?Math.round(m.context_length/1024)+'K ctx':'无上下文限制'} · {m.model_kind==='image'?'图片模型 · ':''}{m.lifecycle_status==='removed'?'已下架 · ':''}{m.provider_count||0} providers</span></span>
-         <span className="model-price">{m.lowest_input!==null&&m.lowest_input!==undefined?million(String(m.lowest_input)):'—'}<small>input / M</small></span>
+         <span className="model-copy"><strong>{m.name}</strong><small>{m.id}</small><span className="model-extra">{contextBrief(m)} · {nonTokenModel(m)?'非 Token 计价 · ':''}{m.lifecycle_status==='removed'?'已下架 · ':''}{m.provider_count||0} providers</span></span>
+         <span className="model-price">{nonTokenModel(m)?'查看实际计费':m.lowest_input!==null&&m.lowest_input!==undefined?million(String(m.lowest_input)):'—'}<small>{nonTokenModel(m)?'Token 计价不适用':'input / 1M tokens'}</small></span>
         </button>
         <button className={'compare-add '+(compareIds.includes(m.id)?'selected':'')} onClick={()=>toggleCompare(m.id)} aria-pressed={compareIds.includes(m.id)} aria-label={compareIds.includes(m.id)?'从对比移除 '+m.name:'加入模型对比 '+m.name}>{compareIds.includes(m.id)?<Check size={16}/>:<Plus size={16}/>}</button>
        </div>)}
        {modelLoading&&<div className="empty loading-state" role="status"><Loader size="sm" /> 正在加载模型…</div>}
        {!modelLoading&&!models.length&&<div className="empty">{"没有匹配的模型。清除筛选，或等待下一次采集。"}</div>}</div>
        {compareIds.length>0&&<div className="compare-toolbar"><span>已选 {compareIds.length}/3 个模型</span><button onClick={()=>setCompareIds([])}>清空</button></div>}
-       <div className="pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(modelTotal/30))} value={page} onChange={setPage}/></div>
+       <div className="pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} getControlProps={control=>({'aria-label':({first:'首页',previous:'上一页',next:'下一页',last:'末页'} as Record<string,string>)[control]})} total={Math.max(1,Math.ceil(modelTotal/30))} value={page} onChange={setPage}/></div>
       </div>
       <div className="panel detail-panel" ref={detailRef}>{selected?<>
        <div className="panel-title"><span>模型详情</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}><Copy size={14} aria-hidden="true"/> 复制链接</button></div>
        <div className="detail-model-head"><span className="model-avatar">{selected.id.split('/')[0].slice(0,2).toUpperCase()}</span><div><h2>{selected.name}</h2><code className="code-id">{selected.id}</code>{selected.lifecycle_status==='removed'&&<span className="event-tag">已确认下架 · 等待恢复</span>}{selected.model_kind==='image'&&<span className="event-tag">图片生成模型</span>}</div></div>
        <div className="detail-quick-stats">
-        <div className="detail-quick-price"><span>{selected.model_kind==='image'?'图片计费':'最低公开输入价'}</span><strong>{selected.model_kind==='image'?'按计费项':lowestInput===null?'—':million(String(lowestInput))}</strong><small>{selected.model_kind==='image'?'单位请参阅报价明细':'USD / 1M tokens · 活跃端点'}</small></div>
-        <div><span>Context</span><strong>{selected.context_length?.toLocaleString()||'—'}</strong><small>Tokens</small></div>
+        <div className="detail-quick-price"><span>{nonTokenModel(selected)?'非 Token 计价':'最低公开输入价'}</span><strong>{nonTokenModel(selected)?'查看实际计费':lowestInput===null?'—':million(String(lowestInput))}</strong><small>{nonTokenModel(selected)?'Token 计价不适用；实际单位请参阅计价规则':'USD / 1M tokens · 活跃端点'}</small></div>
+        <div><span>Context</span><strong>{contextDisplay(selected)}</strong><small>{selected.context_length&&selected.context_length>0?'Tokens':'源数据未提供有效上下文长度'}</small></div>
         <div><span>Provider 端点</span><strong>{collection?.active_endpoints??'—'}</strong><small>当前活跃</small></div>
        </div>
        <div className={'detail-health '+(collection?.status||'never')} role="status">
@@ -387,13 +457,13 @@ function App(){
        </div>
        {selected.alias_target&&<p className="detail-meta">别名目标：{selected.alias_target}</p>}
        {selected.expiration_date&&<p className="detail-meta">预计到期：{new Date(selected.expiration_date*1000).toLocaleDateString()}</p>}
-       <div className="detail-section-head"><h3>Provider 报价</h3><small>{selected.model_kind==='image'?'图片计费单位各异，详见原始规则':'USD / 百万 Token · 最新成功采集'}</small></div>
+       <div className="detail-section-head"><h3>Provider 报价</h3><small>{nonTokenModel(selected)?'实际计费单位各异，不要将零 Token 报价视为免费':'USD / 百万 Token · 最新成功采集'}</small></div>
        <div className="mobile-table-hint">向左滑动查看完整报价与检查时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table radar-provider-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">Provider / 端点</th><th scope="col" className="num">Input</th><th scope="col" className="num">Output</th><th scope="col" className="num">Cache Read</th><th scope="col" className="num">Cache Write</th><th scope="col" className="num">Write 1h</th><th scope="col">检查时间</th></tr></thead><tbody>
-        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{ep.pricing_json.includes('image_pricing')?'图片计费':endpointPrice(ep.input_price)}</td><td className="num">{ep.pricing_json.includes('image_pricing')?'参阅规则':endpointPrice(ep.output_price)}</td><td className="num">{extraPrice(ep,'input_cache_read')}</td><td className="num">{extraPrice(ep,'input_cache_write')}</td><td className="num">{extraPrice(ep,'input_cache_write_1h')}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
+        {providerEndpoints.map(ep=><tr key={ep.id}><td><span className="provider-name">{ep.provider}</span><div className="provider-cell-meta"><Badge size="xs" variant="light" color={ep.status==='active'?'teal':'gray'}>{ep.status==='missing'?'已下线':ep.status==='superseded'?'旧端点':'可用'}</Badge><span>{ep.tag||'default'}</span></div></td><td className="num">{nonTokenModel(selected)?'不适用':endpointPrice(ep.input_price)}</td><td className="num">{nonTokenModel(selected)?'参阅规则':endpointPrice(ep.output_price)}</td><td className="num">{nonTokenModel(selected)?'—':extraPrice(ep,'input_cache_read')}</td><td className="num">{nonTokenModel(selected)?'—':extraPrice(ep,'input_cache_write')}</td><td className="num">{nonTokenModel(selected)?'—':extraPrice(ep,'input_cache_write_1h')}</td><td className="time-cell">{ep.checked_at?time(ep.checked_at):'待采集'}</td></tr>)}
        </tbody></Table>{!providerEndpoints.length&&<div className="empty">Provider 数据还在采集队列中，当前暂无有效报价。</div>}</div>
        {endpoints.filter(e=>e.source==='provider').some(e=>e.pricing_json)&&<details className="raw-pricing"><summary>{"查看非 Token 计价、缓存和动态覆盖规则"}</summary>{endpoints.filter(e=>e.source==='provider').map(e=><div key={e.id}><strong>{e.provider} · {e.tag||'default'}</strong><pre>{JSON.stringify(JSON.parse(e.pricing_json||'{}'),null,2)}</pre></div>)}</details>}
        <ProviderPriceStability key={'stability-'+selected.id} modelId={selected.id}/>
-       <PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>
+       {!nonTokenModel(selected)||selected.model_kind==='image'?<PriceHistory key={selected.id} modelId={selected.id} image={selected.model_kind==='image'} providers={[...new Set(endpoints.filter(e=>e.source==='provider'&&e.status!=='superseded').map(e=>e.provider))]}/>:<p className="non-token-note">此类模型的 Token 价格历史不适用；请查看 Provider 的实际计价规则。</p>}
        <div className="detail-section-head"><h3>最近变化</h3><small>仅记录基准建立后的实际变化</small></div>
        <div className="model-history">{modelEvents.length?modelEvents.map(ev=><div key={ev.id} className="history-item"><div><span className={'event-tag '+(ev.kind==='price.decreased'?'down':ev.kind==='price.increased'?'up':'neutral')}>{eventTitle(ev.kind,ev.dimension)}</span><strong>{ev.provider}</strong></div><p>{formatEvent(ev)}</p><small>发现于 {time(ev.created_at)}</small></div>):<div className="empty">暂无变化记录。这不表示价格从未变化。</div>}</div>
        <div className="subscribe-box"><div className="subscribe-head"><div><h3>Watch this model</h3><p>只有命中规则时才通知，不影响全站采集。</p></div><span className="light-tag">自定义提醒</span></div>
@@ -419,7 +489,7 @@ function App(){
       <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
       <a href={exportUrl('csv')}><Download size={13}/> CSV</a><a href={exportUrl('json')}><Download size={13}/> JSON</a><small>每次导出最多 1,000 条事件</small></div>
      <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
-     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
+     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} getControlProps={control=>({'aria-label':({first:'首页',previous:'上一页',next:'下一页',last:'末页'} as Record<string,string>)[control]})} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
     </>}
     {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><Button className="radar-cta" onClick={()=>setView('catalog')}><Plus size={16}/> 新建订阅</Button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
@@ -483,8 +553,16 @@ function App(){
 }
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
- return <div className="panel table-panel"><div className="mobile-table-hint">向左滑动查看变动明细与发现时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
- {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'||e.kind==='image.price_decreased'?'teal':e.kind==='price.increased'||e.kind==='image.price_increased'?'red':'gray'}>{eventTitle(e.kind,e.dimension)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell">{time(e.created_at)}</td></tr>)}
+ return <div className="panel table-panel"><div className="mobile-table-hint">移动端按事件展示摘要；展开卡片可查看完整时间。</div>
+ <div className="events-mobile-cards">{data.map(e=><article className="event-mobile-card" key={e.id}>
+  <div className="event-mobile-top"><strong>{e.model_id}</strong><Badge size="sm" variant="light" color={e.kind==='price.decreased'||e.kind==='image.price_decreased'?'teal':e.kind==='price.increased'||e.kind==='image.price_increased'?'red':'gray'}>{eventTitle(e.kind,e.dimension)}</Badge></div>
+  <div className="event-mobile-provider">{e.provider}</div>
+  <p>{formatEvent(e)}</p>
+  <div className="event-mobile-bottom">{e.change_pct!==null&&Number.isFinite(e.change_pct)?<strong className={e.change_pct<0?'down':e.change_pct>0?'up':''}>{e.change_pct>0?'+':''}{e.change_pct.toFixed(2)}%</strong>:<span>{priceDimensionLabel(e.dimension)}</span>}
+   <time dateTime={new Date(e.created_at*1000).toISOString()} title={time(e.created_at)}>{relativeTime(e.created_at)}</time></div>
+  <details><summary>完整事件时间与维度</summary><div>{priceDimensionLabel(e.dimension)} · {time(e.created_at)}</div><div>{e.provider} · {e.model_id}</div></details>
+ </article>)}</div><div className="scroll-x events-desktop-table"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
+ {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'||e.kind==='image.price_decreased'?'teal':e.kind==='price.increased'||e.kind==='image.price_increased'?'red':'gray'}>{eventTitle(e.kind,e.dimension)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell"><time dateTime={new Date(e.created_at*1000).toISOString()} title={time(e.created_at)}>{time(e.created_at)}</time></td></tr>)}
  </tbody></Table>{!data.length&&<div className="empty roomy">还没有实际变化事件。首次采集只建立基准。</div>}</div></div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

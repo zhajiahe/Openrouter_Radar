@@ -8,7 +8,7 @@ import { ALARM_INTERVAL_MS } from './scheduler';
 import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
 import { PRICE_FIELDS } from './pricing';
-import { publicCacheSeconds } from './public-cache';
+import { publicCacheSeconds, mutablePublicCacheResponse } from './public-cache';
 import { buildModelRelevance, buildSearchPredicate, parseSearchTerms, SEARCH_QUERY_LIMIT } from './search';
 import { edgePermit, limitClass, queryWithinBudget, requiresJson, sameOriginMutation, trustedClientIp, withinBodyLimit } from './security';
 import {eventTitle} from './event-labels';
@@ -65,7 +65,13 @@ app.use('/api/*',async(c,next)=>{
  if(cache){
   try{
    const hit=await cache.match(key);
-   if(hit){c.res=hit;return;}
+   if(hit){
+    // Cache API responses carry immutable Headers; secureHeaders() runs after next()
+    // and must be able to set security headers on the outgoing response.
+    // A fresh Response copies status/headers but gets a mutable Headers guard.
+    c.res=mutablePublicCacheResponse(hit);
+    return;
+   }
   }catch(error){console.warn('Public API cache lookup failed',error);}
  }
  await next();
@@ -73,7 +79,13 @@ app.use('/api/*',async(c,next)=>{
  c.header('Cache-Control',`public, max-age=${ttl}`);
  if(cache)c.executionCtx.waitUntil(cache.put(key,c.res.clone()).catch(error=>console.warn('Public API cache write failed',error)));
 });
-app.onError((err,c)=>{console.error('Unhandled Radar error',err);return c.json({error:'Internal server error'},500);});
+app.onError((err,c)=>{
+ const requestId=crypto.randomUUID();
+ console.error('Unhandled Radar API error',{requestId,path:new URL(c.req.url).pathname,error:err});
+ c.header('X-Request-ID',requestId);
+ c.header('Cache-Control','no-store');
+ return c.json({error:'服务暂时不可用，请稍后重试',requestId},500);
+});
 app.route('/api/auth',auth);
 app.get('/api/health',async c=>{
  // Bootstrap or heal the singleton DO alarm. No account-level Cron slot is needed.
@@ -144,10 +156,10 @@ app.get('/api/models',async c=>{
  AND COALESCE(m.context_length,0)>=?
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.architecture.input_modalities'),'[]')) j WHERE lower(j.value)=lower(?)))
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.supported_parameters'),'[]')) j WHERE lower(j.value)=lower(?)))
- AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=? AND (?='' OR x.provider=?)))`;
+ AND (?=0 OR (m.model_kind!='image' AND NOT EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.architecture.output_modalities'),'[]')) o WHERE lower(o.value) IN ('image','video','audio')) AND EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=? AND (?='' OR x.provider=?))))`;
  const binds=[...search.binds,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0,provider,provider] as const;
  const [rows,count]=await Promise.all([
-  c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,
+  c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,m.capabilities_json,
    (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL AND (?='' OR e.provider=?)) AS lowest_input,
    (SELECT COUNT(DISTINCT e.provider) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active') AS provider_count
    ${relevance?', '+relevance.sql+' AS relevance_score':''}

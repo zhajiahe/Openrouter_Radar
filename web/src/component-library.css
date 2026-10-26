@@ -179,3 +179,41 @@ html[data-theme="dark"] .pager .mantine-Pagination-control[data-active]{backgrou
  .table-panel .mobile-table-hint{padding-inline:12px}
 }
 @media(prefers-reduced-motion:reduce){.filter-toggle>svg{transition:none}}
+
+/* Browser audit: text below 14px must remain legible against light and dark surfaces. */
+:root{--radar-text-tertiary:#5d5a67}
+.layout .model-item small,.layout .model-extra,.layout .model-price small,
+.layout .detail-panel .code-id,.layout .detail-panel .panel-title,
+.layout .detail-section-head small,.layout .filter-panel label,.layout .radar-data-table .cell-small{
+ color:var(--radar-text-muted);font-size:11px;line-height:1.5
+}
+.layout .filter-panel h2.filter-desktop-heading{margin:0 0 25px;font-size:14px;letter-spacing:-.2px}
+.layout .non-token-note{padding:12px;background:var(--radar-surface-soft);color:var(--radar-text-muted);font-size:12px;border-radius:8px}
+html[data-theme="dark"] .layout .model-item small,html[data-theme="dark"] .layout .model-extra,
+html[data-theme="dark"] .layout .model-price small{color:var(--radar-text-muted)}
+.mobile-nav-trigger,.events-mobile-cards{display:none}
+@media(max-width:720px){
+ .sidebar nav,.sidebar .nav-more{display:none!important}
+ .sidebar .mobile-nav-trigger{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;margin-left:auto;
+  padding:8px 10px;border:1px solid var(--radar-border);background:var(--radar-surface);
+  color:var(--radar-text);border-radius:8px;font-size:12px;min-height:36px
+ }
+ .layout .filter-panel h2.filter-desktop-heading{display:none}
+ .events-desktop-table{display:none}
+ .events-mobile-cards{display:grid;gap:10px;padding:8px}
+ .event-mobile-card{min-width:0;padding:14px;border:1px solid var(--radar-border);border-radius:10px;background:var(--radar-surface);color:var(--radar-text)}
+ .event-mobile-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+ .event-mobile-top strong{font-size:12px;overflow-wrap:anywhere;min-width:0;line-height:1.6}
+ .event-mobile-top .mantine-Badge-root{flex:none;max-width:48%;white-space:normal;height:auto;min-height:22px;text-align:center;line-height:1.4}
+ .event-mobile-provider{margin-top:4px;font-size:11px;color:var(--radar-text-muted)}
+ .event-mobile-card p{font-size:12px;line-height:1.65;margin:10px 0;overflow-wrap:anywhere}
+ .event-mobile-bottom{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px}
+ .event-mobile-bottom strong{font-size:15px;font-variant-numeric:tabular-nums}
+ .event-mobile-bottom strong.up{color:var(--radar-danger)}
+ .event-mobile-bottom strong.down{color:var(--radar-success)}
+ .event-mobile-bottom time,.event-mobile-bottom span{color:var(--radar-text-muted);font-size:11px}
+ .event-mobile-card details{font-size:11px;color:var(--radar-text-muted);margin-top:9px}
+ .event-mobile-card details>div{margin-top:6px;overflow-wrap:anywhere}
+ .event-mobile-card summary{cursor:pointer}
+}
