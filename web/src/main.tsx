@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Modal,NumberInput,Pagination,Select,Table,TextInput} from '@mantine/core';
-import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,ChevronLeft,ChevronRight,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Moon,Plus,Radar,RefreshCw,Rss,Search,SlidersHorizontal,Sun,UserRound,X} from 'lucide-react';
+import {Alert,Badge,Button,Checkbox,Loader,MantineProvider,Menu,Modal,NumberInput,Pagination,Select,Table,TextInput} from '@mantine/core';
+import {Activity,ArrowRight,Bell,Bookmark,Check,ChevronDown,ChevronLeft,ChevronRight,Copy,Download,ExternalLink,History,Layers,LayoutDashboard,Menu as MenuIcon,Moon,Plus,Radar,RefreshCw,Rss,Search,SlidersHorizontal,Sun,UserRound,X} from 'lucide-react';
 import {useDebouncedValue} from '@mantine/hooks';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
@@ -77,8 +77,16 @@ async function api<T>(path:string,options?:RequestInit):Promise<T>{
  if(!r.ok)throw new Error(body.error||'Request failed');
  return body as T;
 }
+const validViews=new Set(['overview','catalog','events','watches','notices','account']);
+const routeParam=(key:string)=>new URLSearchParams(location.search).get(key)||'';
+const routeView=()=>validViews.has(routeParam('view'))?routeParam('view'):'overview';
+const routePage=(key:string)=>{
+ const value=Number(routeParam(key));
+ return Number.isInteger(value)&&value>0&&value<=10000?value:1;
+};
 function App(){
- const [view,setView]=useState('overview');
+ const [view,setView]=useState(routeView);
+ const [routeReady,setRouteReady]=useState(false);
  const [theme,setTheme]=useState<'light'|'dark'>(()=>localStorage.getItem('radar-theme')==='dark'?'dark':'light');
  useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('radar-theme',theme);document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#15141a':'#ffffff');},[theme]);
  useEffect(()=>{document.documentElement.lang='zh-CN';},[]);
@@ -94,13 +102,13 @@ function App(){
  const [modelTotal,setModelTotal]=useState(0);
  const [modelLoading,setModelLoading]=useState(false);
  const [providers,setProviders]=useState<ProviderOption[]>([]);
- const [providerFilter,setProviderFilter]=useState('');
- const [sort,setSort]=useState('auto');
- const [authorFilter,setAuthorFilter]=useState('');
- const [modalityFilter,setModalityFilter]=useState('');
- const [capabilityFilter,setCapabilityFilter]=useState('');
- const [minContext,setMinContext]=useState('');
- const [maxInput,setMaxInput]=useState('');
+ const [providerFilter,setProviderFilter]=useState(()=>routeParam('provider'));
+ const [sort,setSort]=useState(()=>routeParam('sort')||'auto');
+ const [authorFilter,setAuthorFilter]=useState(()=>routeParam('author'));
+ const [modalityFilter,setModalityFilter]=useState(()=>routeParam('modality'));
+ const [capabilityFilter,setCapabilityFilter]=useState(()=>routeParam('capability'));
+ const [minContext,setMinContext]=useState(()=>routeParam('min_context'));
+ const [maxInput,setMaxInput]=useState(()=>routeParam('max_input_price'));
  const [compareIds,setCompareIds]=useState<string[]>([]);
  const catalogSearch=useRef<HTMLInputElement>(null);
  const navRef=useRef<HTMLElement>(null);
@@ -113,22 +121,22 @@ function App(){
  const [events,setEvents]=useState<Event[]>([]);
  const [recentEvents,setRecentEvents]=useState<Event[]>([]);
  const [modelEvents,setModelEvents]=useState<Event[]>([]);
- const [eventSearch,setEventSearch]=useState('');
- const [eventKind,setEventKind]=useState('');
- const [eventProvider,setEventProvider]=useState('');
- const [eventStart,setEventStart]=useState('');
- const [eventEnd,setEventEnd]=useState('');
- const [eventPage,setEventPage]=useState(1);
+ const [eventSearch,setEventSearch]=useState(()=>routeParam('event_q'));
+ const [eventKind,setEventKind]=useState(()=>routeParam('kind'));
+ const [eventProvider,setEventProvider]=useState(()=>routeParam('event_provider'));
+ const [eventStart,setEventStart]=useState(()=>routeParam('start'));
+ const [eventEnd,setEventEnd]=useState(()=>routeParam('end'));
+ const [eventPage,setEventPage]=useState(()=>routePage('event_page'));
  const [eventTotal,setEventTotal]=useState(0);
  const [loadingEvents,setLoadingEvents]=useState(false);
  const [watches,setWatches]=useState<Watch[]>([]);
  const [editingWatch,setEditingWatch]=useState<string|null>(null);
  const [watchDraft,setWatchDraft]=useState<{provider:string;threshold_pct:number;frequency:string;price_dimension:string;events:string[]}>({provider:'',threshold_pct:0,frequency:'instant',price_dimension:'',events:[]});
  const [notices,setNotices]=useState<Notice[]>([]);
- const [search,setSearch]=useState('');
+ const [search,setSearch]=useState(()=>routeParam('q'));
  const [debouncedSearch]=useDebouncedValue(search,250);
  const [debouncedEventSearch]=useDebouncedValue(eventSearch,250);
- const [page,setPage]=useState(1);
+ const [page,setPage]=useState(()=>routePage('page'));
  const [selected,setSelected]=useState<Model|null>(null);
  const [endpoints,setEndpoints]=useState<Endpoint[]>([]);
  const [collection,setCollection]=useState<Collection|null>(null);
@@ -199,10 +207,44 @@ function App(){
   api<{data:ProviderOption[]}>('/providers').then(r=>setProviders(r.data)).catch(()=>{});
   const modelId=new URLSearchParams(location.hash.slice(1)).get('model')||'';
   if(modelId){
-   void api<{model:Model}>('/model?id='+encodeURIComponent(modelId)).then(r=>void inspect(r.model)).catch(()=>{});
-  }
+   void api<{model:Model}>('/model?id='+encodeURIComponent(modelId))
+    .then(r=>inspect(r.model)).catch(()=>{}).finally(()=>setRouteReady(true));
+  }else setRouteReady(true);
   void loadPublic();
  },[]);
+ useEffect(()=>{
+  const restore=()=>{
+   setRouteReady(false);
+   const params=new URLSearchParams(location.search);
+   const get=(key:string)=>params.get(key)||'';
+   setView(validViews.has(get('view'))?get('view'):'overview');
+   setSearch(get('q'));setPage(routePage('page'));setProviderFilter(get('provider'));setSort(get('sort')||'auto');
+   setAuthorFilter(get('author'));setModalityFilter(get('modality'));setCapabilityFilter(get('capability'));
+   setMinContext(get('min_context'));setMaxInput(get('max_input_price'));
+   setEventSearch(get('event_q'));setEventKind(get('kind'));setEventProvider(get('event_provider'));
+   setEventStart(get('start'));setEventEnd(get('end'));setEventPage(routePage('event_page'));
+   const modelId=new URLSearchParams(location.hash.slice(1)).get('model');
+   if(modelId){
+    void api<{model:Model}>('/model?id='+encodeURIComponent(modelId))
+     .then(r=>inspect(r.model)).catch(()=>setSelected(null)).finally(()=>setRouteReady(true));
+   }else{setSelected(null);setRouteReady(true);}
+  };
+  window.addEventListener('popstate',restore);
+  return ()=>window.removeEventListener('popstate',restore);
+ },[]);
+ useEffect(()=>{
+  if(!routeReady)return;
+  const url=new URL(location.href);
+  const values:Record<string,string>={
+   view:view==='overview'?'':view,q:search,page:page===1?'':String(page),provider:providerFilter,
+   sort:sort==='auto'?'':sort,author:authorFilter,modality:modalityFilter,capability:capabilityFilter,
+   min_context:minContext,max_input_price:maxInput,event_q:eventSearch,kind:eventKind,
+   event_provider:eventProvider,start:eventStart,end:eventEnd,event_page:eventPage===1?'':String(eventPage)
+  };
+  for(const [key,value] of Object.entries(values)){if(value)url.searchParams.set(key,value);else url.searchParams.delete(key);}
+  url.hash=view==='catalog'&&selected?'model='+encodeURIComponent(selected.id):'';
+  if(url.href!==location.href)history.replaceState(null,'',url.pathname+url.search+url.hash);
+ },[routeReady,view,search,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput,eventSearch,eventKind,eventProvider,eventStart,eventEnd,eventPage,selected?.id]);
  useEffect(()=>{if(user)void loadPrivate();},[user]);
  useEffect(()=>{void loadModels(debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput);},[debouncedSearch,page,providerFilter,sort,authorFilter,modalityFilter,capabilityFilter,minContext,maxInput]);
  useEffect(()=>{void loadEvents(debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd);},[debouncedEventSearch,eventKind,eventPage,eventProvider,eventStart,eventEnd]);
@@ -283,13 +325,24 @@ function App(){
   catch(e){setError((e as Error).message);}
  }
  async function copyModelLink(modelId:string){
-  const link=location.origin+location.pathname+'#model='+encodeURIComponent(modelId);
+  const url=new URL(location.href);
+  url.searchParams.set('view','catalog');
+  url.hash='model='+encodeURIComponent(modelId);
+  const link=url.toString();
   try{
    if(!navigator.clipboard?.writeText)throw new Error('Clipboard not available');
    await navigator.clipboard.writeText(link);setMessage('模型链接已复制');
   }catch{setError('复制失败，请从地址栏复制当前模型链接');}
  }
- async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);setView('overview');}
+ function navigateView(id:string){
+  const url=new URL(location.href);
+  if(id==='overview')url.searchParams.delete('view');else url.searchParams.set('view',id);
+  if(id!=='catalog')url.hash='';
+  history.pushState(null,'',url.pathname+url.search+url.hash);
+  setView(id);setError('');
+  if(id!=='catalog')setSelected(null);
+ }
+ async function logout(){await api('/auth/logout',{method:'POST'});setUser(null);setWatches([]);setNotices([]);navigateView('overview');}
  const unread=notices.filter(n=>!n.read_at).length;
  const navItems=[{id:'overview',name:'概览',icon:LayoutDashboard},{id:'catalog',name:'Models',icon:Layers},{id:'events',name:'Changes',icon:History},{id:'watches',name:'Watchlist',icon:Bookmark},{id:'notices',name:'通知',icon:Bell}];
  const titles:Record<string,string>={overview:'Overview',catalog:'Models',events:'Changes',watches:'Watchlist',notices:'Notifications',account:'Account'};
@@ -305,9 +358,13 @@ function App(){
    <div className="brand"><span className="brand-icon" aria-hidden="true"><Radar size={21}/></span><span>OpenRouter <b>Radar</b></span></div>
    <div className="side-caption">MODEL MONITORING</div>
    <nav aria-label="主要导航" ref={navRef} onScroll={e=>{const el=e.currentTarget;setNavAtEnd(el.scrollLeft+el.clientWidth>=el.scrollWidth-3);}}>{navItems.map(({id,name,icon:Icon})=>
-    <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>{setView(id);setError('');if(id!=='catalog')history.replaceState(null,'',location.pathname+location.search);}}>
+    <button key={id} aria-current={view===id?'page':undefined} className={'nav-link '+(view===id?'active':'')} onClick={()=>navigateView(id)}>
      <Icon className="nav-icon" size={17} aria-hidden="true"/>{name}{id==='notices'&&unread>0?<span className="counter">{unread}</span>:null}
     </button>)}</nav>
+   <Menu position="bottom-end" withinPortal>
+    <Menu.Target><button className="mobile-nav-trigger" type="button" aria-label="打开页面导航"><MenuIcon size={18} aria-hidden="true"/>菜单</button></Menu.Target>
+    <Menu.Dropdown>{navItems.map(({id,name})=><Menu.Item key={id} onClick={()=>navigateView(id)}>{name}</Menu.Item>)}<Menu.Divider/><Menu.Item onClick={()=>navigateView('account')}>登录 / 账号</Menu.Item></Menu.Dropdown>
+   </Menu>
    <button type="button" className="nav-more" aria-label={navAtEnd?'向左滚动导航':'向右滚动导航'} onClick={()=>navRef.current?.scrollBy({left:navAtEnd?-180:180,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}>{navAtEnd?<ChevronLeft size={17}/>:<ChevronRight size={17}/>}</button>
    <div className="side-footer"><span className="sidebar-status"><span className="online-dot"/> OPEN SOURCE RADAR</span><p>不需要个人 API Key。<br/>持续收集，按需订阅。</p><a href="https://github.com/zhajiahe/Openrouter_Radar" target="_blank" rel="noreferrer">在 GitHub 查看项目 ↗</a></div>
   </aside>
@@ -315,9 +372,9 @@ function App(){
    <header className="topbar">
     <div className="breadcrumb"><span>Radar</span><span className="breadcrumb-separator">/</span><b>{titles[view]}</b></div>
     <div className="topbar-actions">
-     <span className={'live-indicator '+(status.status==='ok'?'':'muted-status')} role="status"><span className="online-dot"/>{status.status==='ok'?"同步正常":"同步状态待确认"}</span>
+     <span className={'live-indicator '+(status.status==='ok'?'':'muted-status')} role="status"><span className="online-dot"/>{status.status==='ok'?"目录采集正常":"目录采集待确认"}</span>
      <div className="preference-controls"><button onClick={()=>setTheme(v=>v==='light'?'dark':'light')} aria-label="切换深色/浅色主题" title="外观">{theme==='light'?<Moon size={16}/>:<Sun size={16}/>}</button></div>
-     <button className="account-button" onClick={()=>setView('account')}><UserRound size={15} aria-hidden="true"/>{user?user.email:"登录 / 注册"}</button>
+     <button className="account-button" onClick={()=>navigateView('account')}><UserRound size={15} aria-hidden="true"/>{user?user.email:"登录 / 注册"}</button>
     </div>
    </header>
    <div className="content">
@@ -433,7 +490,7 @@ function App(){
       <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
       <a href={exportUrl('csv')}><Download size={13}/> CSV</a><a href={exportUrl('json')}><Download size={13}/> JSON</a><small>每次导出最多 1,000 条事件</small></div>
      <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
-     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
+     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} getControlProps={control=>({'aria-label':({first:'首页',previous:'上一页',next:'下一页',last:'末页'} as Record<string,string>)[control])} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
     </>}
     {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><Button className="radar-cta" onClick={()=>setView('catalog')}><Plus size={16}/> 新建订阅</Button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
