@@ -81,7 +81,7 @@ function App(){
  const [modelLoading,setModelLoading]=useState(false);
  const [providers,setProviders]=useState<ProviderOption[]>([]);
  const [providerFilter,setProviderFilter]=useState('');
- const [sort,setSort]=useState('name');
+ const [sort,setSort]=useState('auto');
  const [authorFilter,setAuthorFilter]=useState('');
  const [modalityFilter,setModalityFilter]=useState('');
  const [capabilityFilter,setCapabilityFilter]=useState('');
@@ -335,8 +335,8 @@ function App(){
     {view==='catalog'&&<>
      <div className="page-heading"><div><div className="eyebrow">EXPLORE MODELS</div><h1>Models <span className="model-count">{modelTotal.toLocaleString()}</span></h1><p>{"按模型、Provider、价格探索 OpenRouter 市场。仅显示实际采集的数据。"}</p></div></div>
      <div className="search-row">
-      <div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID，多个关键词用逗号分隔" maxLength={256} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder="搜索 gpt, claude, deepseek（逗号分隔）" /><kbd>/</kbd></div>
-      <label className="sort-field"><span>排序</span><Select aria-label="模型排序" value={sort} onChange={value=>{setSort(value||"name");setPage(1);}} data={[{value:"name",label:"名称 A–Z"},{value:"newest",label:"最近更新"},{value:"context",label:"上下文长度"},{value:"price",label:"最低输入价"}]}/></label>
+      <div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput ref={catalogSearch} className="radar-search" aria-label="搜索模型名称或 ID，空格或逗号分隔关键词，双引号搜索完整短语" maxLength={256} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);setSelected(null);}} placeholder={"gpt claude deepseek 或 \"Gemini 2.5\""} /><kbd>/</kbd></div>
+      <label className="sort-field"><span>排序</span><Select aria-label="模型排序" value={sort} onChange={value=>{setSort(value||"auto");setPage(1);}} data={[{value:"auto",label:search.trim()?"智能 · 相关度优先":"智能 · 默认排序"},{value:"relevance",label:"相关度优先"},{value:"name",label:"名称 A–Z"},{value:"newest",label:"最近更新"},{value:"context",label:"上下文长度"},{value:"price",label:"最低输入价"}]}/></label>
      </div>
      <div className="catalog-grid">
       <aside className="panel filter-panel" aria-label="模型筛选">
@@ -350,7 +350,7 @@ function App(){
        <label htmlFor="capability-filter">{"能力参数"}</label><Select id="capability-filter" clearable placeholder="全部能力" value={capabilityFilter||null} onChange={v=>{setCapabilityFilter(v||"");setPage(1);}} data={[{value:"tools",label:"Tools"},{value:"reasoning",label:"Reasoning"},{value:"response_format",label:"JSON / Structured"}]}/>
        <label htmlFor="min-context">{"最小上下文 Tokens"}</label><NumberInput id="min-context" min={0} step={1024} thousandSeparator="," placeholder="不限" value={minContext} onChange={v=>{setMinContext(String(v));setPage(1);}}/>
        <label htmlFor="max-price">{"最高输入价 USD / 1M Tokens"}</label><NumberInput id="max-price" min={0} step={0.001} decimalScale={6} placeholder="不限" value={maxInput} onChange={v=>{setMaxInput(String(v));setPage(1);}}/>
-       <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='name'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('name');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}><RefreshCw size={14} aria-hidden="true"/> 清除筛选</button>
+       <button className="clear-filters" disabled={!providerFilter&&!search&&!authorFilter&&!modalityFilter&&!capabilityFilter&&!minContext&&!maxInput&&sort==='auto'} onClick={()=>{setProviderFilter('');setSearch('');setPage(1);setSort('auto');setAuthorFilter('');setModalityFilter('');setCapabilityFilter('');setMinContext('');setMaxInput('');}}><RefreshCw size={14} aria-hidden="true"/> 清除筛选</button>
        <div className="filter-divider"/>
        <div className="filter-note"><strong>DATA SOURCE</strong><p>官方元数据 API + 每小时滚动扫描。报价是公开标价，并非实际账单。</p><a href="https://openrouter.ai/models" target="_blank" rel="noreferrer">查看 OpenRouter 原站 <ExternalLink size={12} aria-hidden="true"/></a></div>
        </div>
@@ -411,7 +411,7 @@ function App(){
     </>}
     {view==='events'&&<>
      <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml"><Rss size={16}/> RSS</a></div>
-     <div className="events-filters"><div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput className="radar-search" aria-label="筛选模型或 Provider，多个关键词用逗号分隔" maxLength={256} placeholder="搜索 claude, gpt（逗号分隔）" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
+     <div className="events-filters"><div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput className="radar-search" aria-label="筛选模型或 Provider，空格或逗号分隔关键词，双引号搜索完整短语" maxLength={256} placeholder="搜索 openai anthropic 或 \"Claude 4\"" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
       <Select aria-label="事件类型" searchable clearable placeholder="全部事件" value={eventKind||null} onChange={v=>{setEventKind(v||"");setEventPage(1);}} data={EVENTS.map(([value,label])=>({value,label}))}/>
       <Select aria-label="Provider 筛选" searchable clearable placeholder="所有 Provider" value={eventProvider||null} onChange={v=>{setEventProvider(v||"");setEventPage(1);}} data={providers.map(p=>({value:p.provider,label:p.provider}))}/>
      </div>
