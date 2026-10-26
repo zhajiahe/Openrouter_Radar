@@ -111,7 +111,26 @@ jobs:
           ORIGIN=$(node --input-type=module -e "import fs from 'node:fs'; const c=JSON.parse(fs.readFileSync('wrangler.deploy.json','utf8')); console.log(c.vars.APP_ORIGIN)")
           # A nonexistent model must still exercise the new price_observations table.
           curl -fLsS --retry 2 --connect-timeout 10 --max-time 30             -o /tmp/radar-cache-history.json "$ORIGIN/api/price-history?model_id=radar-smoke/nonexistent&dimension=cache_read"
-          curl -fLsS --retry 2 --connect-timeout 10 --max-time 30             -o /tmp/radar-analytics.json "$ORIGIN/api/analytics?days=7"
+          # Regression for the historical 500: cached Responses have immutable headers.
+          # A single cold request can pass while the second (cached) request fails in Hono secureHeaders.
+          # Test both windows three times without retries, so a transient 500 cannot be hidden.
+          for days in 7 30; do
+            for attempt in 1 2 3; do
+              output="/tmp/radar-analytics-${days}-${attempt}.json"
+              curl -fLsS --connect-timeout 10 --max-time 30 \
+                -o "$output" "$ORIGIN/api/analytics?days=$days"
+              ANALYTICS_FILE="$output" ANALYTICS_DAYS="$days" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const result=JSON.parse(fs.readFileSync(process.env.ANALYTICS_FILE,'utf8'));
+          const days=Number(process.env.ANALYTICS_DAYS);
+          if(result.days!==days || !Array.isArray(result.daily) || result.daily.length!==days ||
+             !Array.isArray(result.modelKinds) || !Array.isArray(result.topProviders) ||
+             !Array.isArray(result.priceDimensions))throw new Error('Analytics contract invalid for '+days+' days');
+          NODE
+              echo "Analytics ${days}d request #${attempt}: success"
+            done
+          done
+          cp /tmp/radar-analytics-7-3.json /tmp/radar-analytics.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const history=JSON.parse(fs.readFileSync('/tmp/radar-cache-history.json','utf8'));
