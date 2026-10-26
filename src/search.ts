@@ -6,7 +6,7 @@ const MAX_TERM_LENGTH = 64;
 export function parseSearchTerms(input: string): string[] {
  const seen = new Set<string>();
  const result: string[] = [];
- for (const part of input.slice(0, SEARCH_QUERY_LIMIT).split(/[,，;；\r\n]+/)) {
+ for (const part of input.slice(0, SEARCH_QUERY_LIMIT).split(/[,，、;；\r\n]+/)) {
   const term = part.trim().slice(0, MAX_TERM_LENGTH).trim();
   const key = term.toLowerCase();
   if (!term || seen.has(key)) continue;
