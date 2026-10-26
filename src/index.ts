@@ -8,7 +8,7 @@ import { ALARM_INTERVAL_MS } from './scheduler';
 import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
 import { PRICE_FIELDS } from './pricing';
-import { publicCacheSeconds } from './public-cache';
+import { publicCacheSeconds, mutablePublicCacheResponse } from './public-cache';
 import { buildModelRelevance, buildSearchPredicate, parseSearchTerms, SEARCH_QUERY_LIMIT } from './search';
 import { edgePermit, limitClass, queryWithinBudget, requiresJson, sameOriginMutation, trustedClientIp, withinBodyLimit } from './security';
 import {eventTitle} from './event-labels';
@@ -69,7 +69,7 @@ app.use('/api/*',async(c,next)=>{
     // Cache API responses carry immutable Headers; secureHeaders() runs after next()
     // and must be able to set security headers on the outgoing response.
     // A fresh Response copies status/headers but gets a mutable Headers guard.
-    c.res=new Response(hit.body,hit);
+    c.res=mutablePublicCacheResponse(hit);
     return;
    }
   }catch(error){console.warn('Public API cache lookup failed',error);}
