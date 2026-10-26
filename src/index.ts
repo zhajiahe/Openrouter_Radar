@@ -9,6 +9,7 @@ import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
 import { PRICE_FIELDS } from './pricing';
 import { publicCacheSeconds } from './public-cache';
+import { buildSearchPredicate, SEARCH_QUERY_LIMIT } from './search';
 import { edgePermit, limitClass, queryWithinBudget, requiresJson, sameOriginMutation, trustedClientIp, withinBodyLimit } from './security';
 import {eventTitle} from './event-labels';
 import {summarizeProviderPriceStability,type ProviderEndpoint,type PriceObservation} from './provider-stability';
@@ -115,7 +116,7 @@ app.get('/api/analytics', async c => {
  });
 });
 app.get('/api/models',async c=>{
- const q=(c.req.query('q')||'').trim().slice(0,80);
+ const q=(c.req.query('q')||'').slice(0,SEARCH_QUERY_LIMIT);
  const provider=(c.req.query('provider')||'').trim().slice(0,150);
  const sort=(c.req.query('sort')||'name').trim();
  const author=(c.req.query('author')||'').trim().slice(0,100);
@@ -132,14 +133,15 @@ app.get('/api/models',async c=>{
   context:'m.context_length DESC, m.name ASC',
   price:'CASE WHEN lowest_input IS NULL THEN 1 ELSE 0 END, lowest_input ASC, m.name ASC'
  };
- const where=`(?='' OR instr(lower(m.name),lower(?))>0 OR instr(lower(m.id),lower(?))>0)
+ const search=buildSearchPredicate(q,['m.name','m.id']);
+ const where=`${search.sql}
  AND (?='' OR EXISTS(SELECT 1 FROM endpoints ep WHERE ep.model_id=m.id AND ep.provider=? AND ep.status='active' AND ep.source='provider'))
  AND (?='' OR substr(lower(m.id),1,length(?)+1)=lower(?)||'/')
  AND COALESCE(m.context_length,0)>=?
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.architecture.input_modalities'),'[]')) j WHERE lower(j.value)=lower(?)))
  AND (?='' OR EXISTS(SELECT 1 FROM json_each(COALESCE(json_extract(m.capabilities_json,'$.supported_parameters'),'[]')) j WHERE lower(j.value)=lower(?)))
  AND (?=0 OR EXISTS(SELECT 1 FROM endpoints x WHERE x.model_id=m.id AND x.source='provider' AND x.status='active' AND x.input_price IS NOT NULL AND CAST(x.input_price AS REAL)<=? AND (?='' OR x.provider=?)))`;
- const binds=[q,q,q,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0,provider,provider] as const;
+ const binds=[...search.binds,provider,provider,author,author,author,minContext,modality,modality,capability,capability,hasMaxInput?1:0,hasMaxInput?maxInput/1e6:0,provider,provider] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,
    (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL AND (?='' OR e.provider=?)) AS lowest_input,
@@ -238,15 +240,16 @@ app.get('/api/price-history',async c=>{
 app.get('/api/events',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
  const kind=(c.req.query('kind')||'').slice(0,60);
- const q=(c.req.query('q')||'').trim().slice(0,80);
+ const q=(c.req.query('q')||'').slice(0,SEARCH_QUERY_LIMIT);
  const provider=(c.req.query('provider')||'').trim().slice(0,150);
  const includeBaseline=c.req.query('include_baseline')==='1';
  const start=Math.max(0,Number(c.req.query('start'))||0);
  const end=Number(c.req.query('end'))||4102444800;
  const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
  const limit=Math.min(Math.max(Number(c.req.query('limit'))||50,1),100);
- const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND (?='' OR provider=?) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed')`;
- const binds=[modelId,modelId,kind,kind,q,q,q,provider,provider,start,end,includeBaseline?1:0] as const;
+ const eventSearch=buildSearchPredicate(q,['model_id','provider']);
+ const where=`(?='' OR model_id=?) AND (?='' OR kind=?) AND ${eventSearch.sql} AND (?='' OR provider=?) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed')`;
+ const binds=[modelId,modelId,kind,kind,...eventSearch.binds,provider,provider,start,end,includeBaseline?1:0] as const;
  const [rows,count]=await Promise.all([
   c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at,quality
    FROM price_events WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).bind(...binds,limit,(page-1)*limit).all(),
@@ -259,11 +262,12 @@ app.get('/api/events/export',async c=>{
  const modelId=(c.req.query('model_id')||'').slice(0,200);
  const kind=(c.req.query('kind')||'').slice(0,60);
  const provider=(c.req.query('provider')||'').slice(0,150);
- const q=(c.req.query('q')||'').slice(0,80);
+ const q=(c.req.query('q')||'').slice(0,SEARCH_QUERY_LIMIT);
  const includeBaseline=c.req.query('include_baseline')==='1';
  const start=Math.max(0,Number(c.req.query('start'))||0),end=Number(c.req.query('end'))||4102444800;
- const data=await c.env.DB.prepare("SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at,quality FROM price_events WHERE (?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR provider=?) AND (?='' OR instr(lower(model_id),lower(?))>0 OR instr(lower(provider),lower(?))>0) AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed') ORDER BY created_at DESC LIMIT 1000")
-  .bind(modelId,modelId,kind,kind,provider,provider,q,q,q,start,end,includeBaseline?1:0).all();
+ const eventSearch=buildSearchPredicate(q,['model_id','provider']);
+ const data=await c.env.DB.prepare(`SELECT id,model_id,provider,kind,dimension,old_price,new_price,change_pct,created_at,quality FROM price_events WHERE (?='' OR model_id=?) AND (?='' OR kind=?) AND (?='' OR provider=?) AND ${eventSearch.sql} AND created_at BETWEEN ? AND ? AND (?=1 OR quality='observed') ORDER BY created_at DESC LIMIT 1000`)
+  .bind(modelId,modelId,kind,kind,provider,provider,...eventSearch.binds,start,end,includeBaseline?1:0).all();
  const headers={'Cache-Control':'no-store','Content-Disposition':'attachment; filename="radar-events.'+format+'"','X-Export-Limit':'1000'};
  if(format==='json')return c.json({data:data.results,limit:1000,exported_at:now()},200,headers);
  const keys=['id','model_id','provider','kind','dimension','old_price','new_price','change_pct','created_at','quality'];
