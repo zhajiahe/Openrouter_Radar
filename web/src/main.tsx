@@ -190,7 +190,6 @@ function App(){
   setSelected(model);setView('catalog');setWatchProvider('');setWatchDimension('');setThreshold(0);setFrequency('instant');
   if(window.matchMedia('(max-width: 990px)').matches)requestAnimationFrame(()=>detailRef.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));
   setEndpoints([]);setModelEvents([]);setCollection(null);
-  history.replaceState(null,'','#model='+encodeURIComponent(model.id));
   try{
    const [details,changes]=await Promise.all([
     api<{model:Model;endpoints:Endpoint[];collection:Collection}>('/model?id='+encodeURIComponent(model.id)),
@@ -554,8 +553,16 @@ function App(){
 }
 function Gate({onLogin}:{onLogin:()=>void}){return <div className="panel empty roomy"><h3>登录后解锁个性化监控</h3><p>新用户能否注册由实例运营者设置。我们不会要求你的 OpenRouter API Key。</p><Button className="radar-cta" onClick={onLogin}>注册 / 登录 →</Button></div>}
 function EventsTable({data}:{data:Event[]}){
- return <div className="panel table-panel"><div className="mobile-table-hint">向左滑动查看变动明细与发现时间 <ArrowRight size={14} aria-hidden="true"/></div><div className="scroll-x"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
- {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'||e.kind==='image.price_decreased'?'teal':e.kind==='price.increased'||e.kind==='image.price_increased'?'red':'gray'}>{eventTitle(e.kind,e.dimension)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell">{time(e.created_at)}</td></tr>)}
+ return <div className="panel table-panel"><div className="mobile-table-hint">移动端按事件展示摘要；展开卡片可查看完整时间。</div>
+ <div className="events-mobile-cards">{data.map(e=><article className="event-mobile-card" key={e.id}>
+  <div className="event-mobile-top"><strong>{e.model_id}</strong><Badge size="sm" variant="light" color={e.kind==='price.decreased'||e.kind==='image.price_decreased'?'teal':e.kind==='price.increased'||e.kind==='image.price_increased'?'red':'gray'}>{eventTitle(e.kind,e.dimension)}</Badge></div>
+  <div className="event-mobile-provider">{e.provider}</div>
+  <p>{formatEvent(e)}</p>
+  <div className="event-mobile-bottom">{e.change_pct!==null&&Number.isFinite(e.change_pct)?<strong className={e.change_pct<0?'down':e.change_pct>0?'up':''}>{e.change_pct>0?'+':''}{e.change_pct.toFixed(2)}%</strong>:<span>{priceDimensionLabel(e.dimension)}</span>}
+   <time dateTime={new Date(e.created_at*1000).toISOString()} title={time(e.created_at)}>{relativeTime(e.created_at)}</time></div>
+  <details><summary>完整事件时间与维度</summary><div>{priceDimensionLabel(e.dimension)} · {time(e.created_at)}</div><div>{e.provider} · {e.model_id}</div></details>
+ </article>)}</div><div className="scroll-x events-desktop-table"><Table className="radar-data-table events-table" highlightOnHover verticalSpacing="xs" horizontalSpacing="sm"><thead><tr><th scope="col">模型 / Provider</th><th scope="col">变化类型</th><th scope="col">变动明细</th><th scope="col">发现时间</th></tr></thead><tbody>
+ {data.map(e=><tr key={e.id}><td><strong title={e.model_id}>{e.model_id}</strong><span className="cell-small">{e.provider}</span></td><td><Badge size="sm" variant="light" color={e.kind==='price.decreased'||e.kind==='image.price_decreased'?'teal':e.kind==='price.increased'||e.kind==='image.price_increased'?'red':'gray'}>{eventTitle(e.kind,e.dimension)}</Badge></td><td className="table-description">{formatEvent(e)}</td><td className="time-cell"><time dateTime={new Date(e.created_at*1000).toISOString()} title={time(e.created_at)}>{time(e.created_at)}</time></td></tr>)}
  </tbody></Table>{!data.length&&<div className="empty roomy">还没有实际变化事件。首次采集只建立基准。</div>}</div></div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
