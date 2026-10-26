@@ -2,10 +2,11 @@ import React,{useEffect,useState} from 'react';
 import {ActionIcon,Alert,Badge,Loader,Table} from '@mantine/core';
 import {X} from 'lucide-react';
 import {PriceHistory} from './price-history-chart';
+import {contextDisplay,nonTokenModel} from './model-display';
 export {PriceHistory};
 
 type CompareData={
- model:{id:string;name:string;context_length:number|null;model_kind?:string};
+ model:{id:string;name:string;context_length:number|null;model_kind?:string;capabilities_json?:string|null};
  endpoints:{id:string;provider:string;source:string;status:string;pricing_json?:string;input_price:string|null;output_price:string|null}[];
 };
 const fmt=(n:number)=>Number.isFinite(n)?'$'+n.toLocaleString('zh-CN',{maximumFractionDigits:6}):'—';
@@ -32,7 +33,7 @@ export function CompareModels({ids,onRemove,onClose}:{ids:string[];onRemove:(id:
     <span>{models.find(m=>m.model.id===id)?.model.name||id}</span>
     <ActionIcon ml={6} size="xs" variant="subtle" color="gray" aria-label={'移除 '+id} onClick={()=>onRemove(id)}><X size={13}/></ActionIcon>
    </th>)}</tr></thead><tbody>
-    <tr><td>上下文 Tokens</td>{ids.map(id=><td className="num" key={id}>{models.find(m=>m.model.id===id)?.model.context_length?.toLocaleString()||'—'}</td>)}</tr>
+    <tr><td>上下文 Tokens</td>{ids.map(id=><td className="num" key={id}>{models.find(m=>m.model.id===id)?contextDisplay(models.find(m=>m.model.id===id)!.model):'—'}</td>)}</tr>
     {providers.map(provider=><React.Fragment key={provider}>
      <tr><td><Badge size="xs" color="gray" variant="light">{provider}</Badge> 输入</td>{ids.map(id=><td className="num" key={id}>{price(models.find(m=>m.model.id===id),provider,'input_price')}</td>)}</tr>
      <tr><td>{provider} 输出</td>{ids.map(id=><td className="num" key={id}>{price(models.find(m=>m.model.id===id),provider,'output_price')}</td>)}</tr>
@@ -43,18 +44,18 @@ export function CompareModels({ids,onRemove,onClose}:{ids:string[];onRemove:(id:
    </tbody></Table>
    {!providers.length&&<div className="empty">暂无可比较的有效 Provider 报价。</div>}
   </div>}
-  <p className="chart-muted">— 表示未采集、无有效报价或图片模型等非 Token 单位。每个 Provider 只比较最低基础价，不包含折扣或动态计费。</p>
+  <p className="chart-muted">— 表示未采集、无有效报价或视频/图片/音频等非 Token 计价。每个 Provider 只比较最低基础价，不包含折扣或动态计费。</p>
  </section>;
 }
 function price(model:CompareData|undefined,provider:string,dim:'input_price'|'output_price'){
- if(!model||model.model.model_kind==='image')return '—';
+ if(!model||nonTokenModel(model.model))return '—';
  const nums=model.endpoints.filter(e=>e.provider===provider&&e.source==='provider'&&e.status==='active'&&!e.pricing_json?.includes('image_pricing')&&e[dim]!==null)
   .map(e=>Number(e[dim])*1e6).filter(n=>Number.isFinite(n)&&n>=0);
  return nums.length?fmt(Math.min(...nums)):'—';
 }
 
 function extra(model:CompareData|undefined,provider:string,field:string){
- if(!model||model.model.model_kind==='image')return '—';
+ if(!model||nonTokenModel(model.model))return '—';
  const nums=model.endpoints.filter(e=>e.provider===provider&&e.source==='provider'&&e.status==='active'&&!e.pricing_json?.includes('image_pricing'))
   .flatMap(e=>{
    try{
