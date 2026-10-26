@@ -44,7 +44,7 @@
     "prettier": "^3.6.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@playwright/test": "^1.56.1",
-    "pixelmatch": "^6.0.0",
+    "pixelmatch": "^8.0.0",
     "pngjs": "^7.0.0",
     "@resvg/resvg-js": "2.6.2"
   }
