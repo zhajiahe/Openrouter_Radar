@@ -65,9 +65,9 @@ const formatEvent=(e:Event):string=>{
  }
  if(e.kind.startsWith('model.'))return (e.dimension||'模型属性')+'：'+(e.old_price||'未知').slice(0,90)+' → '+(e.new_price||'未知').slice(0,90);
  if(e.old_price!==null&&e.new_price!==null){
-   const token=['input','output','cache_read','cache_write','cache_write_1h'].includes(e.dimension||'');
+   const token=['input','output','cache_read','cache_write','cache_write_1h','internal_reasoning','image_token','input_audio_cache'].includes(e.dimension||'');
    const f=(v:string)=>token?million(v):v;
-   return priceDimensionLabel(e.dimension)+': '+f(e.old_price)+' → '+f(e.new_price)+(token?' / 百万 Token':' / 原始计费单位');
+   return priceDimensionLabel(e.dimension)+': '+f(e.old_price)+' → '+f(e.new_price)+(token?' USD / 1M Tokens':' / 原始计费单位（详见规则）');
  }
  return 'Provider 端点状态变化';
 };
@@ -310,8 +310,8 @@ function App(){
  }
  function exportUrl(format:'csv'|'json'){
   const params=new URLSearchParams({format,q:eventSearch,kind:eventKind,provider:eventProvider});
-  if(eventStart)params.set('start',String(Math.floor(new Date(eventStart+'T00:00:00').getTime()/1000)));
-  if(eventEnd)params.set('end',String(Math.floor(new Date(eventEnd+'T23:59:59').getTime()/1000)));
+  if(eventStart){const bounds=utcEventBounds(eventStart);if(bounds)params.set('start',String(bounds.start));}
+  if(eventEnd){const bounds=utcEventBounds(eventEnd);if(bounds)params.set('end',String(bounds.end));}
   return '/api/events/export?'+params.toString();
  }
  async function removeWatch(id:string){
