@@ -18,23 +18,44 @@ const SERIES=[
 const dateLabel=(value:string)=>new Date(value+'T00:00:00Z').toLocaleDateString('zh-CN',{month:'numeric',day:'numeric',timeZone:'UTC'});
 const number=(value:number)=>value.toLocaleString('zh-CN');
 const kindLabel=(kind:string)=>kind==='image'?'图片模型':kind==='standard'?'常规模型':kind==='other'?'其他模型':kind;
+const analyticsCacheKey=(days:7|30)=>'radar-analytics-v1-'+days;
+function cachedAnalytics(days:7|30):AnalyticsData|null{
+ try{
+  const raw=localStorage.getItem(analyticsCacheKey(days));
+  if(!raw)return null;
+  const value=JSON.parse(raw) as AnalyticsData;
+  if(value.days!==days||!Array.isArray(value.daily)||!Array.isArray(value.modelKinds)||!Array.isArray(value.topProviders)||!Number.isFinite(value.updatedAt)||Date.now()-value.updatedAt*1000>86400_000)return null;
+  return value;
+ }catch{return null;}
+}
+function rememberAnalytics(value:AnalyticsData){
+ try{localStorage.setItem(analyticsCacheKey(value.days),JSON.stringify(value));}catch{/* Optional offline fallback. */}
+}
 
 export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(date:string)=>void;onSelectProvider:(provider:string)=>void}){
  const [days,setDays]=useState<7|30>(7);
- const [data,setData]=useState<AnalyticsData|null>(null);
+ const [data,setData]=useState<AnalyticsData|null>(()=>cachedAnalytics(7));
+ const [stale,setStale]=useState(false);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
  const [refreshToken,setRefreshToken]=useState(0);
  useEffect(()=>{
   let cancelled=false;
+  const saved=cachedAnalytics(days);
+  if(saved){setData(saved);setStale(true);}
   const load=async()=>{
    if(!cancelled)setLoading(true);
    try{
     const response=await fetch('/api/analytics?days='+days,{credentials:'same-origin'});
-    const body=await response.json() as AnalyticsData|{error?:string};
-    if(!response.ok)throw new Error(('error' in body&&body.error)||'暂时无法获取图表数据');
-    if(!cancelled){setData(body as AnalyticsData);setError('');}
-   }catch(e){if(!cancelled)setError((e as Error).message);}
+    const body=await response.json() as AnalyticsData|{error?:string;requestId?:string};
+    if(!response.ok){
+     const requestId='requestId' in body?body.requestId:undefined;
+     throw new Error('市场统计服务暂时不可用'+(requestId?'（请求编号：'+requestId+'）':''));
+    }
+    const result=body as AnalyticsData;
+    if(!Array.isArray(result.daily)||!Array.isArray(result.modelKinds)||!Array.isArray(result.topProviders))throw new Error('市场统计数据格式异常');
+    if(!cancelled){setData(result);setError('');setStale(false);rememberAnalytics(result);}
+   }catch(e){if(!cancelled){setError(e instanceof Error&&e.message.startsWith('市场统计')?e.message:'市场统计服务暂时不可用，请稍后重试');setStale(true);}}
    finally{if(!cancelled)setLoading(false);}
   };
   void load();
@@ -61,9 +82,9 @@ export function AnalyticsDashboard({onSelectDay,onSelectProvider}:{onSelectDay:(
    <div><Activity size={16} aria-hidden="true"/><span>{days} 天内事件</span><strong>{visibleData?number(totalEvents):'—'}</strong></div>
    <div><ArrowUpRight size={16} aria-hidden="true"/><span>价格调整</span><strong>{visibleData?number(priceEvents):'—'}</strong></div>
    <div><span>活跃模型</span><strong>{visibleData?number(activeModels):'—'}</strong></div>
-   <small>{loading?'同步中…':'最近更新 '+updated}</small>
+   <small>{stale&&visibleData?'历史缓存 · 最近成功更新 '+updated:loading?'正在加载…':'最近更新 '+updated}</small>
   </div>
-  {error&&<div className="chart-inline-error" role="alert">{error}<Button variant="light" size="xs" onClick={()=>setRefreshToken(v=>v+1)}>重试</Button></div>}
+  {error&&<div className="chart-inline-error" role="alert">{error}。{visibleData?'下方保留最近一次成功的统计数据，请留意时效。':'当前无法展示市场图表。'}<Button variant="light" size="xs" onClick={()=>setRefreshToken(v=>v+1)}>重试</Button></div>}
   {visibleData?.priceDimensions?.length?<div className="chart-dimensions" aria-label="价格调整维度">{visibleData.priceDimensions.map(item=><span key={item.dimension}>{priceDimensionLabel(item.dimension)} · {number(item.count)}</span>)}</div>:null}
   <div className="analytics-grid">
    <section className="chart-panel chart-panel-wide" aria-labelledby="activity-title">
