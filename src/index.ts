@@ -9,7 +9,7 @@ import { safeCollectionError } from './history';
 import { analyticsWindow, buildDailyAnalytics } from './analytics';
 import { PRICE_FIELDS } from './pricing';
 import { publicCacheSeconds } from './public-cache';
-import { buildSearchPredicate, SEARCH_QUERY_LIMIT } from './search';
+import { buildModelRelevance, buildSearchPredicate, parseSearchTerms, SEARCH_QUERY_LIMIT } from './search';
 import { edgePermit, limitClass, queryWithinBudget, requiresJson, sameOriginMutation, trustedClientIp, withinBodyLimit } from './security';
 import {eventTitle} from './event-labels';
 import {summarizeProviderPriceStability,type ProviderEndpoint,type PriceObservation} from './provider-stability';
@@ -118,7 +118,7 @@ app.get('/api/analytics', async c => {
 app.get('/api/models',async c=>{
  const q=(c.req.query('q')||'').slice(0,SEARCH_QUERY_LIMIT);
  const provider=(c.req.query('provider')||'').trim().slice(0,150);
- const sort=(c.req.query('sort')||'name').trim();
+ const sort=(c.req.query('sort')||'auto').trim();
  const author=(c.req.query('author')||'').trim().slice(0,100);
  const modality=(c.req.query('modality')||'').trim().slice(0,50);
  const capability=(c.req.query('capability')||'').trim().slice(0,80);
@@ -127,11 +127,15 @@ app.get('/api/models',async c=>{
  const hasMaxInput=c.req.query('max_input_price')!==undefined && Number.isFinite(maxInput) && maxInput>=0;
  const limit=Math.min(Math.max(Number(c.req.query('limit'))||30,1),100);
  const page=Math.min(Math.max(Number(c.req.query('page'))||1,1),10000);
+ const terms=parseSearchTerms(q);
+ const relevance=(terms.length && (sort==='auto'||sort==='relevance'))?buildModelRelevance(terms):null;
+ const sortMode=(sort==='auto'||sort==='relevance')?(relevance?'relevance':'name'):sort;
  const order:Record<string,string>={
+  relevance:"relevance_score DESC, CASE WHEN m.lifecycle_status='active' THEN 0 ELSE 1 END, provider_count DESC, m.updated_at DESC, m.name COLLATE NOCASE ASC, m.id ASC",
   name:'m.name COLLATE NOCASE ASC, m.id ASC',
-  newest:'m.updated_at DESC, m.name ASC',
-  context:'m.context_length DESC, m.name ASC',
-  price:'CASE WHEN lowest_input IS NULL THEN 1 ELSE 0 END, lowest_input ASC, m.name ASC'
+  newest:'m.updated_at DESC, m.name COLLATE NOCASE ASC, m.id ASC',
+  context:'CASE WHEN m.context_length IS NULL THEN 1 ELSE 0 END, m.context_length DESC, m.name COLLATE NOCASE ASC, m.id ASC',
+  price:'CASE WHEN lowest_input IS NULL THEN 1 ELSE 0 END, lowest_input ASC, m.name COLLATE NOCASE ASC, m.id ASC'
  };
  const search=buildSearchPredicate(q,['m.name','m.id']);
  const where=`${search.sql}
@@ -146,8 +150,9 @@ app.get('/api/models',async c=>{
   c.env.DB.prepare(`SELECT m.id,m.name,m.context_length,m.updated_at,m.expiration_date,m.alias_target,m.model_kind,m.lifecycle_status,
    (SELECT MIN(CAST(e.input_price AS REAL)) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active' AND e.input_price IS NOT NULL AND (?='' OR e.provider=?)) AS lowest_input,
    (SELECT COUNT(DISTINCT e.provider) FROM endpoints e WHERE e.model_id=m.id AND e.source='provider' AND e.status='active') AS provider_count
-   FROM models m WHERE ${where} ORDER BY ${order[sort]||order.name} LIMIT ? OFFSET ?`)
-    .bind(provider,provider,...binds,limit,(page-1)*limit).all(),
+   ${relevance?', '+relevance.sql+' AS relevance_score':''}
+   FROM models m WHERE ${where} ORDER BY ${order[sortMode]||order.name} LIMIT ? OFFSET ?`)
+    .bind(provider,provider,...(relevance?.binds||[]),...binds,limit,(page-1)*limit).all(),
   c.env.DB.prepare(`SELECT COUNT(*) AS total FROM models m WHERE ${where}`).bind(...binds).first<{total:number}>()
  ]);
  return c.json({data:rows.results,page,limit,total:count?.total||0});
