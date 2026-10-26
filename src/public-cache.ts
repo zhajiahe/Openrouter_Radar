@@ -12,3 +12,9 @@ const CACHE_SECONDS:Readonly<Record<string,number>>={
 export function publicCacheSeconds(pathname:string):number{
  return Object.prototype.hasOwnProperty.call(CACHE_SECONDS,pathname)?CACHE_SECONDS[pathname]:0;
 }
+
+/** Cloudflare cache.match() returns a response with immutable headers.
+ * Hono secureHeaders mutates response headers after downstream middleware returns. */
+export function mutablePublicCacheResponse(hit:Response):Response{
+ return new Response(hit.body,hit);
+}
