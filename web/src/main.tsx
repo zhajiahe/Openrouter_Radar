@@ -438,7 +438,7 @@ function App(){
        {modelLoading&&<div className="empty loading-state" role="status"><Loader size="sm" /> 正在加载模型…</div>}
        {!modelLoading&&!models.length&&<div className="empty">{"没有匹配的模型。清除筛选，或等待下一次采集。"}</div>}</div>
        {compareIds.length>0&&<div className="compare-toolbar"><span>已选 {compareIds.length}/3 个模型</span><button onClick={()=>setCompareIds([])}>清空</button></div>}
-       <div className="pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} getControlProps={control=>({'aria-label':({first:'首页',previous:'上一页',next:'下一页',last:'末页'} as Record<string,string>)[control])} total={Math.max(1,Math.ceil(modelTotal/30))} value={page} onChange={setPage}/></div>
+       <div className="pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} getControlProps={control=>({'aria-label':({first:'首页',previous:'上一页',next:'下一页',last:'末页'} as Record<string,string>)[control]})} total={Math.max(1,Math.ceil(modelTotal/30))} value={page} onChange={setPage}/></div>
       </div>
       <div className="panel detail-panel" ref={detailRef}>{selected?<>
        <div className="panel-title"><span>模型详情</span><button className="text-action" onClick={()=>void copyModelLink(selected.id)}><Copy size={14} aria-hidden="true"/> 复制链接</button></div>
@@ -489,7 +489,7 @@ function App(){
       <label>到 <input aria-label="结束日期" type="date" value={eventEnd} onChange={e=>{setEventEnd(e.target.value);setEventPage(1);}}/></label>
       <a href={exportUrl('csv')}><Download size={13}/> CSV</a><a href={exportUrl('json')}><Download size={13}/> JSON</a><small>每次导出最多 1,000 条事件</small></div>
      <div aria-busy={loadingEvents}><EventsTable data={events}/></div>
-     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} getControlProps={control=>({'aria-label':({first:'首页',previous:'上一页',next:'下一页',last:'末页'} as Record<string,string>)[control])} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
+     <div className="pager events-pager"><Pagination size="sm" withEdges siblings={1} boundaries={1} getControlProps={control=>({'aria-label':({first:'首页',previous:'上一页',next:'下一页',last:'末页'} as Record<string,string>)[control]})} total={Math.max(1,Math.ceil(eventTotal/30))} value={eventPage} onChange={setEventPage}/></div>
     </>}
     {view==='watches'&&<><div className="page-heading"><div><div className="eyebrow">MY WATCHLIST</div><h1>{"我的订阅"}</h1><p>每个账号最多创建 50 条规则，所有用户共享同一份上游采集结果。</p></div><Button className="radar-cta" onClick={()=>setView('catalog')}><Plus size={16}/> 新建订阅</Button></div>
      {!user?<Gate onLogin={()=>setView('account')}/>:<div className="panel">
