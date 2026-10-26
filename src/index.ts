@@ -65,7 +65,13 @@ app.use('/api/*',async(c,next)=>{
  if(cache){
   try{
    const hit=await cache.match(key);
-   if(hit){c.res=hit;return;}
+   if(hit){
+    // Cache API responses carry immutable Headers; secureHeaders() runs after next()
+    // and must be able to set security headers on the outgoing response.
+    // A fresh Response copies status/headers but gets a mutable Headers guard.
+    c.res=new Response(hit.body,hit);
+    return;
+   }
   }catch(error){console.warn('Public API cache lookup failed',error);}
  }
  await next();
