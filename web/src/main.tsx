@@ -411,7 +411,7 @@ function App(){
     </>}
     {view==='events'&&<>
      <div className="page-heading"><div><div className="eyebrow">CHANGELOG</div><h1>Changes <span className="model-count">{eventTotal.toLocaleString()}</span></h1><p>所有变化来自实际快照对比。无模拟行情，发现时间可能晚于变价时间。</p></div><a className="outline-button" href="/feed.xml"><Rss size={16}/> RSS</a></div>
-     <div className="events-filters"><div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput className="radar-search" aria-label="筛选模型或 Provider，空格或逗号分隔关键词，双引号搜索完整短语" maxLength={256} placeholder="搜索 openai anthropic 或 \"Claude 4\"" value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
+     <div className="events-filters"><div className="search-field"><Search className="search-glyph" size={18} aria-hidden="true"/><TextInput className="radar-search" aria-label="筛选模型或 Provider，空格或逗号分隔关键词，双引号搜索完整短语" maxLength={256} placeholder={'搜索 openai anthropic 或 "Claude 4"'} value={eventSearch} onChange={e=>{setEventSearch(e.target.value);setEventPage(1);}}/></div>
       <Select aria-label="事件类型" searchable clearable placeholder="全部事件" value={eventKind||null} onChange={v=>{setEventKind(v||"");setEventPage(1);}} data={EVENTS.map(([value,label])=>({value,label}))}/>
       <Select aria-label="Provider 筛选" searchable clearable placeholder="所有 Provider" value={eventProvider||null} onChange={v=>{setEventProvider(v||"");setEventPage(1);}} data={providers.map(p=>({value:p.provider,label:p.provider}))}/>
      </div>
