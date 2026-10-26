@@ -7,7 +7,7 @@ import { buildSearchPredicate, parseSearchTerms, SEARCH_QUERY_LIMIT, SEARCH_TERM
  });
 
  test('comma, Chinese comma, semicolon and newline separate OR terms', () => {
-  assert.deepEqual(parseSearchTerms(' GPT , Claude；gpt\nDeepSeek， '), ['GPT','Claude','DeepSeek']);
+  assert.deepEqual(parseSearchTerms(' GPT , Claude；gpt\nDeepSeek、 '), ['GPT','Claude','DeepSeek']);
  });
 
  test('keyword bounds avoid unbounded database predicates', () => {
