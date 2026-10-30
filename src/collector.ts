@@ -156,7 +156,9 @@ async function matchEvent(env:Bindings,record:EventRow,subs:SubRow[]):Promise<vo
  await env.DB.batch(stmts);
 }
 export async function matchUnmatchedEvents(env:Bindings,limit=100):Promise<number>{
- const records=await env.DB.prepare("SELECT id,model_id,provider,kind,dimension,change_pct,created_at FROM price_events WHERE matched_at IS NULL AND quality='observed' ORDER BY created_at ASC LIMIT ?").bind(limit).all<EventRow>();
+ // Force the existing partial index: D1 otherwise prefers the broader quality/time
+ // index and scans historical events even when no unmatched rows remain.
+ const records=await env.DB.prepare("SELECT id,model_id,provider,kind,dimension,change_pct,created_at FROM price_events INDEXED BY idx_events_unmatched_observed WHERE matched_at IS NULL AND quality='observed' ORDER BY created_at ASC LIMIT ?").bind(limit).all<EventRow>();
  // A price change often emits several dimensions for the same model.
  // Reuse subscriber lists within this replay window instead of N+1 reads.
  const subscribers=new Map<string,SubRow[]>();
