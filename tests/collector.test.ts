@@ -70,6 +70,6 @@ test('empty unmatched replay uses the selective partial index without follow-up 
  const {env,executed,queries}=stubDb([],[]);
  assert.equal(await matchUnmatchedEvents(env,25),0);
  assert.equal(queries.length,1);
- assert.match(queries[0],/FROM price_events INDEXED BY idx_events_unmatched_observed WHERE matched_at IS NULL AND quality='observed' ORDER BY created_at ASC LIMIT \\?/);
+ assert.match(queries[0],/FROM price_events INDEXED BY idx_events_unmatched_observed WHERE matched_at IS NULL AND quality='observed' ORDER BY created_at ASC LIMIT [?]/);
  assert.deepEqual(executed,[]);
 });
