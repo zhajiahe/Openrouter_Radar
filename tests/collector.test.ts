@@ -6,8 +6,10 @@ import type {Bindings} from '../src/types';
 type Row=Record<string,unknown>;
 function stubDb(events:Row[],subscriptions:Row[]) {
  const executed:{sql:string;args:unknown[]}[][]=[];
+ const queries:string[]=[];
  const db={
   prepare(sql:string){
+   queries.push(sql);
    return {
     bind(...args:unknown[]){
      return {
@@ -26,7 +28,7 @@ function stubDb(events:Row[],subscriptions:Row[]) {
    return stmts.map(()=>({success:true}));
   }
  };
- return {env:{DB:db} as unknown as Bindings,executed};
+ return {env:{DB:db} as unknown as Bindings,executed,queries};
 }
 const event={id:'evt1',model_id:'sample/model',provider:'Provider A',kind:'price.decreased',dimension:'input',change_pct:-25,created_at:1792390000};
 const sub=(id:string,provider:string|null,threshold_pct:number,events_json='["price.decreased"]')=>({
@@ -62,4 +64,12 @@ test('subscription price dimensions do not suppress independent lifecycle events
  assert.equal(await matchUnmatchedEvents(env),1);
  assert.equal(executed[0].length,2);
  assert.equal(executed[0][0].args[1],'subscriber');
+});
+
+test('empty unmatched replay uses the selective partial index without follow-up queries',async()=>{
+ const {env,executed,queries}=stubDb([],[]);
+ assert.equal(await matchUnmatchedEvents(env,25),0);
+ assert.equal(queries.length,1);
+ assert.match(queries[0],/FROM price_events INDEXED BY idx_events_unmatched_observed WHERE matched_at IS NULL AND quality='observed' ORDER BY created_at ASC LIMIT \\?/);
+ assert.deepEqual(executed,[]);
 });
